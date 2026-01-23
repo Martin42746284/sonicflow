@@ -13,13 +13,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import coil.compose.AsyncImage
+import androidx.compose.material.icons.filled.MoreVert
+import coil.compose.SubcomposeAsyncImage
 import com.example.sonicflow.data.local.preferences.SortOrder
 import com.example.sonicflow.domain.model.Track
 
@@ -269,16 +271,42 @@ private fun TrackItem(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Album Art
-        AsyncImage(
+        // Album Art avec fallback
+        SubcomposeAsyncImage(
             model = track.albumArtUri,
             contentDescription = "Album art",
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(8.dp)),
             contentScale = ContentScale.Crop,
-            error = painterResource(id = android.R.drawable.ic_menu_music),
-            placeholder = painterResource(id = android.R.drawable.ic_menu_music)
+            loading = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                }
+            },
+            error = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MusicNote,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            }
         )
 
         Spacer(modifier = Modifier.width(12.dp))
@@ -420,9 +448,13 @@ private fun ErrorView(
 
 private fun getSortOrderLabel(sortOrder: SortOrder): String {
     return when (sortOrder) {
-        SortOrder.TITLE -> "Title (A-Z)"
-        SortOrder.ARTIST -> "Artist (A-Z)"
-        SortOrder.DURATION -> "Duration"
-        SortOrder.DATE_ADDED -> "Date Added"
+        SortOrder.TITLE_ASC -> "Title (A-Z)"
+        SortOrder.TITLE_DESC -> "Title (Z-A)"
+        SortOrder.ARTIST_ASC -> "Artist (A-Z)"
+        SortOrder.ARTIST_DESC -> "Artist (Z-A)"
+        SortOrder.DURATION_ASC -> "Duration (Shortest)"
+        SortOrder.DURATION_DESC -> "Duration (Longest)"
+        SortOrder.DATE_ADDED_ASC -> "Date Added (Oldest)"
+        SortOrder.DATE_ADDED_DESC -> "Date Added (Newest)"
     }
 }

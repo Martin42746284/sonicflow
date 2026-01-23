@@ -2,6 +2,7 @@ package com.example.sonicflow.presentation.screen.playlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sonicflow.data.mapper.toModel
 import com.example.sonicflow.domain.model.Playlist
 import com.example.sonicflow.domain.usecase.playlist.*
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +17,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PlaylistViewModel @Inject constructor(
     private val getPlaylistsUseCase: GetPlaylistsUseCase,
-    private val deletePlaylistUseCase: DeletePlaylistUseCase,
+    private val createPlaylistUseCase: CreatePlaylistUseCase,
+    private val deletePlaylistUseCase: DeletePlaylistUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlaylistScreenState())
@@ -28,71 +30,91 @@ class PlaylistViewModel @Inject constructor(
 
     fun loadPlaylists() {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            _state.update { currentState ->
+                currentState.copy(isLoading = true, error = null)
+            }
 
-            getPlaylistsUseCase.getPlaylistsWithTracks()
-                .catch { exception ->
-                    _state.update { it.copy(
-                        isLoading = false,
-                        error = exception.message ?: "Failed to load playlists"
-                    )}
-                }
-                .collect { playlistsWithTracks ->
-                    val trackCounts = playlistsWithTracks.associate {
-                        it.playlist.id to it.trackCount
+            try {
+                // Récupérer toutes les playlists avec leurs tracks
+                getPlaylistsUseCase()
+                    .catch { exception ->
+                        _state.update { currentState ->
+                            currentState.copy(
+                                isLoading = false,
+                                error = exception.message ?: "Failed to load playlists"
+                            )
+                        }
                     }
-
-                    _state.update { it.copy(
-                        playlists = playlistsWithTracks.map { it.playlist },
-                        playlistTrackCounts = trackCounts,
+                    .collect { playlists ->
+                        _state.update { currentState ->
+                            currentState.copy(
+                                playlists = playlists,
+                                isLoading = false,
+                                error = null
+                            )
+                        }
+                    }
+            } catch (exception: Exception) {
+                _state.update { currentState ->
+                    currentState.copy(
                         isLoading = false,
-                        error = null
-                    )}
+                        error = exception.message ?: "Unknown error"
+                    )
                 }
+            }
         }
     }
 
     fun createPlaylist(name: String, description: String?) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
+            try {
+                _state.update { currentState ->
+                    currentState.copy(isLoading = true)
+                }
 
-            createPlaylistUseCase(name, description).fold(
-                onSuccess = { playlistId ->
-                    _state.update { it.copy(
+                createPlaylistUseCase(name, description)
+
+                _state.update { currentState ->
+                    currentState.copy(
                         isLoading = false,
                         successMessage = "Playlist created successfully"
-                    )}
-                    // Les playlists se mettront à jour automatiquement via le Flow
-                },
-                onFailure = { exception ->
-                    _state.update { it.copy(
+                    )
+                }
+            } catch (exception: Exception) {
+                _state.update { currentState ->
+                    currentState.copy(
                         isLoading = false,
                         error = exception.message ?: "Failed to create playlist"
-                    )}
+                    )
                 }
-            )
+            }
         }
     }
 
     fun deletePlaylist(playlistId: Long) {
         viewModelScope.launch {
-            deletePlaylistUseCase(playlistId).fold(
-                onSuccess = {
-                    _state.update { it.copy(
+            try {
+                deletePlaylistUseCase(playlistId)
+
+                _state.update { currentState ->
+                    currentState.copy(
                         successMessage = "Playlist deleted"
-                    )}
-                },
-                onFailure = { exception ->
-                    _state.update { it.copy(
-                        error = exception.message ?: "Failed to delete playlist"
-                    )}
+                    )
                 }
-            )
+            } catch (exception: Exception) {
+                _state.update { currentState ->
+                    currentState.copy(
+                        error = exception.message ?: "Failed to delete playlist"
+                    )
+                }
+            }
         }
     }
 
     fun clearMessages() {
-        _state.update { it.copy(error = null, successMessage = null) }
+        _state.update { currentState ->
+            currentState.copy(error = null, successMessage = null)
+        }
     }
 }
 

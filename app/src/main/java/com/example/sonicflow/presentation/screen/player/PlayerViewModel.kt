@@ -2,7 +2,6 @@ package com.example.sonicflow.presentation.screen.player
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.sonicflow.domain.model.PlayerState
 import com.example.sonicflow.domain.model.RepeatMode
 import com.example.sonicflow.domain.model.Track
 import com.example.sonicflow.domain.usecase.player.*
@@ -12,11 +11,6 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/**
- * ViewModel pour l'écran Player
- * Semaine 2, Jours 13-14 : Logique du lecteur
- * Semaine 4, Jours 22-26 : Waveform
- */
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val playTrackUseCase: PlayTrackUseCase,
@@ -26,99 +20,82 @@ class PlayerViewModel @Inject constructor(
     private val seekToPositionUseCase: SeekToPositionUseCase,
     private val toggleRepeatModeUseCase: ToggleRepeatModeUseCase,
     private val toggleShuffleModeUseCase: ToggleShuffleModeUseCase,
-    private val updateQueueUseCase: UpdateQueueUseCase,
     private val generateWaveformUseCase: GenerateWaveformUseCase
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(PlayerScreenState())
     val state: StateFlow<PlayerScreenState> = _state.asStateFlow()
 
-    private val _playerState = MutableStateFlow(PlayerState())
-
-    init {
-        observePlayerState()
-    }
-
-    private fun observePlayerState() {
+    fun playTrack(
+        track: Track,
+        queue: List<Track> = listOf(track)
+    ) {
         viewModelScope.launch {
-            _playerState.collect { playerState ->
+            _state.update { it.copy(isLoading = true) }
+
+            try {
+                val trackIndex = queue.indexOf(track).coerceAtLeast(0)
+
+                playTrackUseCase(track)
+
+                _state.update { currentState ->
+                    currentState.copy(
+                        currentTrack = track,
+                        isPlaying = true,
+                        queue = queue,
+                        currentQueueIndex = trackIndex,
+                        currentPosition = 0L,
+                        duration = track.duration,
+                        isLoading = false,
+                        hasNext = hasNext(trackIndex, queue, currentState.repeatMode),
+                        hasPrevious = hasPrevious(trackIndex, currentState.repeatMode)
+                    )
+                }
+
+                loadWaveform(track)
+            } catch (exception: Exception) {
                 _state.update { it.copy(
-                    currentTrack = playerState.currentTrack,
-                    isPlaying = playerState.isPlaying,
-                    currentPosition = playerState.currentPosition,
-                    duration = playerState.duration,
-                    progress = playerState.progress,
-                    repeatMode = playerState.repeatMode,
-                    shuffleEnabled = playerState.shuffleEnabled,
-                    queue = playerState.queue,
-                    currentQueueIndex = playerState.currentQueueIndex,
-                    hasNext = playerState.hasNext(),
-                    hasPrevious = playerState.hasPrevious()
+                    isLoading = false,
+                    error = exception.message ?: "Failed to play track"
                 )}
             }
         }
     }
 
-    fun playTrack(track: Track, queue: List<Track> = listOf(track)) {
-        viewModelScope.launch {
-            _state.update { it.copy(isLoading = true) }
-
-            // Mettre à jour la queue
-            val (newQueue, index) = updateQueueUseCase(queue, queue.indexOf(track))
-
-            // Jouer la piste
-            playTrackUseCase(track).fold(
-                onSuccess = {
-                    _playerState.update { state ->
-                        state.copy(
-                            currentTrack = track,
-                            isPlaying = true,
-                            queue = newQueue,
-                            currentQueueIndex = index,
-                            currentPosition = 0L,
-                            duration = track.duration
-                        )
-                    }
-
-                    // Générer la waveform
-                    loadWaveform(track)
-
-                    _state.update { it.copy(isLoading = false) }
-                },
-                onFailure = { exception ->
-                    _state.update { it.copy(
-                        isLoading = false,
-                        error = exception.message ?: "Failed to play track"
-                    )}
-                }
-            )
-        }
-    }
-
     fun togglePlayPause() {
-        val currentState = _playerState.value
+        val currentState = _state.value
 
-        if (currentState.isPlaying) {
-            // Pause
-            val position = pauseTrackUseCase(currentState.currentPosition)
-            _playerState.update { it.copy(
-                isPlaying = false,
-                currentPosition = position
-            )}
-        } else {
-            // Play
-            _playerState.update { it.copy(isPlaying = true) }
+        viewModelScope.launch {
+            try {
+                if (currentState.isPlaying) {
+                    pauseTrackUseCase()
+                    _state.update { it.copy(isPlaying = false) }
+                } else {
+                    currentState.currentTrack?.let { track ->
+                        playTrackUseCase(track)
+                        _state.update { it.copy(isPlaying = true) }
+                    }
+                }
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    error = exception.message ?: "Failed to toggle playback"
+                )}
+            }
         }
     }
 
     fun skipToNext() {
         viewModelScope.launch {
-            val currentState = _playerState.value
-            val nextTrack = skipToNextUseCase(currentState)
+            val currentState = _state.value
+            val nextIndex = currentState.currentQueueIndex + 1
 
-            nextTrack?.let { track ->
-                playTrack(track, currentState.queue)
-            } ?: run {
+            if (nextIndex < currentState.queue.size) {
+                val nextTrack = currentState.queue[nextIndex]
+                playTrack(track = nextTrack, queue = currentState.queue)
+            } else if (currentState.repeatMode == RepeatMode.ALL) {
+                val firstTrack = currentState.queue.firstOrNull()
+                firstTrack?.let { playTrack(track = it, queue = currentState.queue) }
+            } else {
                 _state.update { it.copy(error = "No next track available") }
             }
         }
@@ -126,94 +103,191 @@ class PlayerViewModel @Inject constructor(
 
     fun skipToPrevious() {
         viewModelScope.launch {
-            val currentState = _playerState.value
-            val previousTrack = skipToPreviousUseCase(
-                currentState,
-                currentState.currentPosition
-            )
+            val currentState = _state.value
 
-            previousTrack?.let { track ->
-                if (track.id == currentState.currentTrack?.id && currentState.currentPosition > 3000) {
-                    // Recommencer la piste actuelle
-                    seekTo(0L)
-                } else {
-                    playTrack(track, currentState.queue)
+            if (currentState.currentPosition > 3000L) {
+                seekTo(0L)
+            } else {
+                val previousIndex = currentState.currentQueueIndex - 1
+
+                if (previousIndex >= 0) {
+                    val previousTrack = currentState.queue[previousIndex]
+                    playTrack(track = previousTrack, queue = currentState.queue)
+                } else if (currentState.repeatMode == RepeatMode.ALL) {
+                    val lastTrack = currentState.queue.lastOrNull()
+                    lastTrack?.let { playTrack(track = it, queue = currentState.queue) }
                 }
             }
         }
     }
 
     fun seekTo(position: Long) {
-        val currentState = _playerState.value
-        val validPosition = seekToPositionUseCase(position, currentState.duration)
+        val currentState = _state.value
+        val validPosition = position.coerceIn(0L, currentState.duration)
 
-        _playerState.update { it.copy(currentPosition = validPosition) }
+        viewModelScope.launch {
+            try {
+                seekToPositionUseCase(validPosition)  // ✅ Un seul paramètre
+                _state.update { it.copy(currentPosition = validPosition) }
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    error = exception.message ?: "Failed to seek"
+                )}
+            }
+        }
     }
 
     fun seekToPercentage(percentage: Float) {
-        val currentState = _playerState.value
-        val position = seekToPositionUseCase.seekByPercentage(percentage, currentState.duration)
+        val currentState = _state.value
+        val position = (currentState.duration * percentage.coerceIn(0f, 1f)).toLong()
         seekTo(position)
     }
 
     fun toggleRepeatMode() {
-        val currentMode = _playerState.value.repeatMode
-        val newMode = toggleRepeatModeUseCase(currentMode)
+        viewModelScope.launch {
+            val currentMode = _state.value.repeatMode
+            val newMode = when (currentMode) {
+                RepeatMode.OFF -> RepeatMode.ALL
+                RepeatMode.ALL -> RepeatMode.ONE
+                RepeatMode.ONE -> RepeatMode.OFF
+            }
 
-        _playerState.update { it.copy(repeatMode = newMode) }
+            try {
+                toggleRepeatModeUseCase()
+
+                val currentState = _state.value
+                _state.update { it.copy(
+                    repeatMode = newMode,
+                    hasNext = hasNext(currentState.currentQueueIndex, currentState.queue, newMode),
+                    hasPrevious = hasPrevious(currentState.currentQueueIndex, newMode)
+                )}
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    error = exception.message ?: "Failed to toggle repeat mode"
+                )}
+            }
+        }
     }
 
     fun toggleShuffle() {
-        val currentState = _playerState.value
-        val (newShuffleState, newQueue) = toggleShuffleModeUseCase(
-            currentState.shuffleEnabled,
-            currentState.queue,
-            currentState.currentTrack
-        )
+        viewModelScope.launch {
+            val currentState = _state.value
+            val newShuffleState = !currentState.shuffleEnabled
 
-        _playerState.update { it.copy(
-            shuffleEnabled = newShuffleState,
-            queue = newQueue,
-            currentQueueIndex = 0
-        )}
+            try {
+                val newQueue = if (newShuffleState) {
+                    val currentTrack = currentState.currentTrack
+                    val remainingTracks = currentState.queue.toMutableList()
+
+                    if (currentTrack != null) {
+                        remainingTracks.remove(currentTrack)
+                        remainingTracks.shuffle()
+                        listOf(currentTrack) + remainingTracks
+                    } else {
+                        remainingTracks.shuffled()
+                    }
+                } else {
+                    currentState.queue
+                }
+
+                toggleShuffleModeUseCase()
+
+                _state.update { it.copy(
+                    shuffleEnabled = newShuffleState,
+                    queue = newQueue,
+                    currentQueueIndex = 0,
+                    hasNext = hasNext(0, newQueue, currentState.repeatMode),
+                    hasPrevious = hasPrevious(0, currentState.repeatMode)
+                )}
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    error = exception.message ?: "Failed to toggle shuffle"
+                )}
+            }
+        }
     }
 
     fun playTrackAtIndex(index: Int) {
-        val queue = _playerState.value.queue
-        if (index in queue.indices) {
-            playTrack(queue[index], queue)
+        val currentState = _state.value
+        if (index in currentState.queue.indices) {
+            playTrack(
+                track = currentState.queue[index],
+                queue = currentState.queue
+            )
         }
     }
 
     private fun loadWaveform(track: Track) {
         viewModelScope.launch {
-            // Vérifier si la waveform existe déjà
-            if (track.hasWaveform()) {
-                val amplitudes = generateWaveformUseCase.parseWaveformData(track.waveformData!!)
-                _state.update { it.copy(waveformData = amplitudes) }
-            } else {
-                // Générer la waveform
-                generateWaveformUseCase(
-                    trackId = track.id,
-                    audioPath = track.path,
-                    samplesCount = 100
-                ).fold(
-                    onSuccess = { waveformJson ->
-                        val amplitudes = generateWaveformUseCase.parseWaveformData(waveformJson)
-                        _state.update { it.copy(waveformData = amplitudes) }
-                    },
-                    onFailure = {
-                        // Utiliser une waveform par défaut
-                        val defaultWaveform = generateWaveformUseCase.generateDefaultWaveform(100)
-                        _state.update { it.copy(waveformData = defaultWaveform) }
-                    }
-                )
+            try {
+                if (!track.waveformData.isNullOrBlank()) {
+                    val amplitudes = parseWaveformData(track.waveformData)
+                    _state.update { it.copy(waveformData = amplitudes) }
+                } else {
+                    // Générer la waveform
+                    val waveformJson = generateWaveformUseCase(
+                        audioPath = track.path,
+                        samplesCount = 100
+                    )
+
+                    val amplitudes = parseWaveformData(waveformJson)
+                    _state.update { it.copy(waveformData = amplitudes) }
+                }
+            } catch (exception: Exception) {
+                val defaultWaveform = generateDefaultWaveform(samplesCount = 100)
+                _state.update { it.copy(waveformData = defaultWaveform) }
             }
         }
     }
 
+    private fun parseWaveformData(waveformJson: String): List<Float> {
+        return try {
+            waveformJson
+                .removeSurrounding("[", "]")
+                .split(",")
+                .mapNotNull { it.trim().toFloatOrNull() }
+        } catch (e: Exception) {
+            generateDefaultWaveform(samplesCount = 100)
+        }
+    }
+
+    private fun generateDefaultWaveform(samplesCount: Int): List<Float> {
+        return List(samplesCount) { (0.1f + Math.random().toFloat() * 0.9f) }
+    }
+
+    private fun hasNext(
+        currentIndex: Int,
+        queue: List<Track>,
+        repeatMode: RepeatMode
+    ): Boolean {
+        return when (repeatMode) {
+            RepeatMode.OFF -> currentIndex < queue.lastIndex
+            RepeatMode.ONE, RepeatMode.ALL -> true
+        }
+    }
+
+    private fun hasPrevious(
+        currentIndex: Int,
+        repeatMode: RepeatMode
+    ): Boolean {
+        return when (repeatMode) {
+            RepeatMode.OFF -> currentIndex > 0
+            RepeatMode.ONE, RepeatMode.ALL -> true
+        }
+    }
+
     fun updatePosition(position: Long) {
-        _playerState.update { it.copy(currentPosition = position) }
+        val currentState = _state.value
+        val progress = if (currentState.duration > 0) {
+            (position.toFloat() / currentState.duration) * 100f
+        } else {
+            0f
+        }
+
+        _state.update { it.copy(
+            currentPosition = position,
+            progress = progress
+        )}
     }
 
     fun clearError() {

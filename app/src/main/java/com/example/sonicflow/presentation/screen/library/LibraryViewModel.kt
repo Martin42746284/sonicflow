@@ -29,7 +29,7 @@ class LibraryViewModel @Inject constructor(
     val state: StateFlow<LibraryState> = _state.asStateFlow()
 
     private val _searchQuery = MutableStateFlow("")
-    private val _sortOrder = MutableStateFlow(SortOrder.TITLE)
+    private val _sortOrder = MutableStateFlow(SortOrder.TITLE_ASC)
 
     init {
         observeTracks()
@@ -47,7 +47,10 @@ class LibraryViewModel @Inject constructor(
                 if (query.isBlank()) {
                     sortTracksUseCase(sortOrder)
                 } else {
-                    searchTracksUseCase(query)
+                    searchTracksUseCase(query).map { tracks ->
+                        // Trier les résultats de recherche aussi
+                        sortTracksList(tracks, sortOrder)
+                    }
                 }
             }.catch { exception ->
                 _state.update { it.copy(
@@ -76,17 +79,15 @@ class LibraryViewModel @Inject constructor(
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
 
-            syncTracksUseCase().fold(
-                onSuccess = {
-                    _state.update { it.copy(isLoading = false) }
-                },
-                onFailure = { exception ->
-                    _state.update { it.copy(
-                        isLoading = false,
-                        error = exception.message ?: "Failed to sync tracks"
-                    )}
-                }
-            )
+            try {
+                syncTracksUseCase()
+                _state.update { it.copy(isLoading = false) }
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    isLoading = false,
+                    error = exception.message ?: "Failed to sync tracks"
+                )}
+            }
         }
     }
 
@@ -99,6 +100,22 @@ class LibraryViewModel @Inject constructor(
         _sortOrder.value = sortOrder
         _state.update { it.copy(sortOrder = sortOrder) }
     }
+
+    /**
+     * Helper pour trier une liste de tracks
+     */
+    private fun sortTracksList(tracks: List<Track>, sortOrder: SortOrder): List<Track> {
+        return when (sortOrder) {
+            SortOrder.TITLE_ASC -> tracks.sortedBy { it.title.lowercase() }
+            SortOrder.TITLE_DESC -> tracks.sortedByDescending { it.title.lowercase() }
+            SortOrder.ARTIST_ASC -> tracks.sortedBy { it.artist.lowercase() }
+            SortOrder.ARTIST_DESC -> tracks.sortedByDescending { it.artist.lowercase() }
+            SortOrder.DURATION_ASC -> tracks.sortedBy { it.duration }
+            SortOrder.DURATION_DESC -> tracks.sortedByDescending { it.duration }
+            SortOrder.DATE_ADDED_ASC -> tracks.sortedBy { it.dateAdded }
+            SortOrder.DATE_ADDED_DESC -> tracks.sortedByDescending { it.dateAdded }
+        }
+    }
 }
 
 data class LibraryState(
@@ -106,5 +123,5 @@ data class LibraryState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val searchQuery: String = "",
-    val sortOrder: SortOrder = SortOrder.TITLE
+    val sortOrder: SortOrder = SortOrder.TITLE_ASC
 )

@@ -4,12 +4,12 @@ import com.example.sonicflow.domain.repository.PlayerRepository
 import javax.inject.Inject
 
 /**
- * Use case pour mettre en pause la lecture
+ * Use case pour passer à la piste précédente
  */
-class PauseTrackUseCase @Inject constructor(
+class SkipToPreviousUseCase @Inject constructor(
     private val playerRepository: PlayerRepository
 ) {
     suspend operator fun invoke() {
-        playerRepository.pauseTrack()
+        playerRepository.skipToPrevious()
     }
 }

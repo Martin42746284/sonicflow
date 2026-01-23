@@ -2,6 +2,7 @@ package com.example.sonicflow.domain.usecase.playlist
 
 import com.example.sonicflow.domain.model.Playlist
 import com.example.sonicflow.domain.repository.PlaylistRepository
+import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 
 class UpdatePlaylistUseCase @Inject constructor(
@@ -39,10 +40,13 @@ class UpdatePlaylistUseCase @Inject constructor(
                 return Result.failure(Exception("Playlist name cannot be empty"))
             }
 
-            val playlist = playlistRepository.getPlaylistById(playlistId)
+            val playlist = playlistRepository.getPlaylistById(playlistId).firstOrNull()
                 ?: return Result.failure(Exception("Playlist not found"))
 
-            val updatedPlaylist = playlist.update(name = newName)
+            val updatedPlaylist = playlist.copy(
+                name = newName,
+                updatedAt = System.currentTimeMillis()
+            )
             playlistRepository.updatePlaylist(updatedPlaylist)
 
             Result.success(Unit)
@@ -57,10 +61,13 @@ class UpdatePlaylistUseCase @Inject constructor(
      */
     suspend fun updateDescription(playlistId: Long, newDescription: String?): Result<Unit> {
         return try {
-            val playlist = playlistRepository.getPlaylistById(playlistId)
+            val playlist = playlistRepository.getPlaylistById(playlistId).firstOrNull()
                 ?: return Result.failure(Exception("Playlist not found"))
 
-            val updatedPlaylist = playlist.update(description = newDescription)
+            val updatedPlaylist = playlist.copy(
+                description = newDescription,
+                updatedAt = System.currentTimeMillis()
+            )
             playlistRepository.updatePlaylist(updatedPlaylist)
 
             Result.success(Unit)
@@ -75,10 +82,13 @@ class UpdatePlaylistUseCase @Inject constructor(
      */
     suspend fun updateCoverImage(playlistId: Long, imagePath: String?): Result<Unit> {
         return try {
-            val playlist = playlistRepository.getPlaylistById(playlistId)
+            val playlist = playlistRepository.getPlaylistById(playlistId).firstOrNull()
                 ?: return Result.failure(Exception("Playlist not found"))
 
-            val updatedPlaylist = playlist.update(coverImagePath = imagePath)
+            val updatedPlaylist = playlist.copy(
+                coverImagePath = imagePath,
+                updatedAt = System.currentTimeMillis()
+            )
             playlistRepository.updatePlaylist(updatedPlaylist)
 
             Result.success(Unit)

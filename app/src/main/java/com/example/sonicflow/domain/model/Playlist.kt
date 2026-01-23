@@ -6,7 +6,8 @@ data class Playlist(
     val description: String? = null,
     val createdAt: Long,
     val updatedAt: Long,
-    val coverImagePath: String? = null
+    val coverImagePath: String? = null,
+    val trackCount: Int = 0
 ) {
     companion object {
         // Factory method pour créer une nouvelle playlist
@@ -16,12 +17,10 @@ data class Playlist(
         ): Playlist {
             val currentTime = System.currentTimeMillis()
             return Playlist(
-                id = 0, // Room va auto-générer l'ID
-                name = name,
+                name = name, // Room va auto-générer l'ID
                 description = description,
                 createdAt = currentTime,
                 updatedAt = currentTime,
-                coverImagePath = null
             )
         }
     }

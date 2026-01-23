@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <full-backup-content>
-    <include domain="sharedpref" path="."/>
-    <include domain="database" path="."/>
-    <include domain="file" path="."/>
+    <!-- Exclure les fichiers sensibles du backup -->
+    <exclude domain="sharedpref" path="auth_prefs.xml"/>
+    <exclude domain="database" path="sonicflow.db"/>
 </full-backup-content>

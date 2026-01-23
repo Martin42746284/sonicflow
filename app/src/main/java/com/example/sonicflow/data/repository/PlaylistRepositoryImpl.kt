@@ -1,53 +1,65 @@
 package com.example.sonicflow.data.repository
 
 import com.example.sonicflow.data.local.database.dao.PlaylistDao
-import com.example.sonicflow.data.local.database.dao.PlaylistTrackCrossRefDao
+import com.example.sonicflow.data.local.entities.PlaylistEntity
 import com.example.sonicflow.data.local.entities.PlaylistTrackCrossRef
-import com.example.sonicflow.data.mapper.*
+import com.example.sonicflow.data.local.entities.PlaylistWithTracks
+import com.example.sonicflow.data.mapper.toModel
 import com.example.sonicflow.domain.model.Playlist
-import com.example.sonicflow.domain.model.PlaylistWithTracksModel
 import com.example.sonicflow.domain.model.Track
 import com.example.sonicflow.domain.repository.PlaylistRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class PlaylistRepositoryImpl @Inject constructor(
-    private val playlistDao: PlaylistDao,
-    private val playlistTrackCrossRefDao: PlaylistTrackCrossRefDao
+    private val playlistDao: PlaylistDao
 ) : PlaylistRepository {
 
     override fun getAllPlaylists(): Flow<List<Playlist>> {
-        return playlistDao.getAllPlaylists().map { it.toDomainList() }
+        return playlistDao.getAllPlaylists().map { entities ->
+            entities.map { it.toModel() }
+        }
     }
 
-    override suspend fun getPlaylistById(playlistId: Long): Playlist? {
-        return playlistDao.getPlaylistById(playlistId)?.toDomain()
+    override fun getPlaylistWithTracks(playlistId: Long): Flow<PlaylistWithTracks> {
+        return playlistDao.getPlaylistWithTracks(playlistId)
     }
 
-    override suspend fun getPlaylistWithTracks(playlistId: Long): PlaylistWithTracksModel? {
-        return playlistDao.getPlaylistWithTracks(playlistId)?.toDomain()
-    }
-
-    override fun getAllPlaylistsWithTracks(): Flow<List<PlaylistWithTracksModel>> {
+    override fun getAllPlaylistsWithTracks(): Flow<List<PlaylistWithTracks>> {
         return playlistDao.getAllPlaylistsWithTracks()
-            .map { it.toDomainPlaylistWithTracksList() }
     }
 
-    override suspend fun createPlaylist(playlist: Playlist): Long {
-        return playlistDao.insertPlaylist(playlist.toEntity())
+    override fun getPlaylistById(playlistId: Long): Flow<Playlist?> {
+        return playlistDao.getPlaylistById(playlistId).map { it?.toModel() }
+    }
+
+    override suspend fun createPlaylist(name: String, description: String?): Long {
+        val playlist = PlaylistEntity(
+            name = name,
+            description = description,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+        return playlistDao.insertPlaylist(playlist)
     }
 
     override suspend fun updatePlaylist(playlist: Playlist) {
-        playlistDao.updatePlaylist(playlist.toEntity())
+        val entity = PlaylistEntity(
+            id = playlist.id,
+            name = playlist.name,
+            description = playlist.description,
+            coverImagePath = playlist.coverImagePath,
+            createdAt = playlist.createdAt,
+            updatedAt = System.currentTimeMillis()
+        )
+        playlistDao.updatePlaylist(entity)
     }
 
-    override suspend fun deletePlaylist(playlist: Playlist) {
-        playlistDao.deletePlaylist(playlist.toEntity())
-    }
-
-    override suspend fun deletePlaylistById(playlistId: Long) {
-        playlistDao.deletePlaylistById(playlistId)
+    override suspend fun deletePlaylist(playlistId: Long) {
+        playlistDao.deletePlaylist(playlistId)
     }
 
     override suspend fun addTrackToPlaylist(playlistId: Long, trackId: Long) {
@@ -56,35 +68,31 @@ class PlaylistRepositoryImpl @Inject constructor(
             trackId = trackId,
             addedAt = System.currentTimeMillis()
         )
-        playlistTrackCrossRefDao.addTrackToPlaylist(crossRef)
+        playlistDao.insertPlaylistTrackCrossRef(crossRef)
     }
 
     override suspend fun removeTrackFromPlaylist(playlistId: Long, trackId: Long) {
-        playlistTrackCrossRefDao.removeTrackFromPlaylistById(playlistId, trackId)
-    }
-
-    override suspend fun removeAllTracksFromPlaylist(playlistId: Long) {
-        playlistTrackCrossRefDao.removeAllTracksFromPlaylist(playlistId)
+        playlistDao.deletePlaylistTrackCrossRef(playlistId, trackId)
     }
 
     override fun getTracksForPlaylist(playlistId: Long): Flow<List<Track>> {
-        return playlistTrackCrossRefDao.getTracksForPlaylist(playlistId)
-            .map { it.toDomainList() }
-    }
-
-    override suspend fun getTrackCountForPlaylist(playlistId: Long): Int {
-        return playlistTrackCrossRefDao.getTrackCountForPlaylist(playlistId)
-    }
-
-    override suspend fun isTrackInPlaylist(playlistId: Long, trackId: Long): Boolean {
-        return playlistTrackCrossRefDao.isTrackInPlaylist(playlistId, trackId)
+        return playlistDao.getPlaylistWithTracks(playlistId).map { playlistWithTracks ->
+            playlistWithTracks.tracks.map { it.toModel() }
+        }
     }
 
     override fun searchPlaylists(query: String): Flow<List<Playlist>> {
-        return playlistDao.searchPlaylists(query).map { it.toDomainList() }
+        return playlistDao.searchPlaylists("%$query%").map { entities ->
+            entities.map { it.toModel() }
+        }
     }
 
-    override suspend fun getPlaylistsCount(): Int {
-        return playlistDao.getPlaylistsCount()
+    // ✅ AJOUTER cette méthode
+    override suspend fun isTrackInPlaylist(playlistId: Long, trackId: Long): Boolean {
+        return playlistDao.isTrackInPlaylist(playlistId, trackId)
+    }
+
+    override suspend fun getTrackCountForPlaylist(playlistId: Long): Int {
+        return playlistDao.getTrackCountForPlaylist(playlistId)
     }
 }

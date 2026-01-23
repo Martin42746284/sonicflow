@@ -2,6 +2,7 @@ package com.example.sonicflow.presentation.screen.playlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sonicflow.data.mapper.toModel
 import com.example.sonicflow.domain.model.Playlist
 import com.example.sonicflow.domain.model.Track
 import com.example.sonicflow.domain.usecase.playlist.*
@@ -30,62 +31,148 @@ class PlaylistDetailViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true, error = null) }
 
             try {
-                // Charger les infos de la playlist
-                getPlaylistsUseCase.getPlaylistWithTracks(playlistId).fold(
-                    onSuccess = { playlistWithTracks ->
+                // Charger les infos de la playlist via Flow
+                getPlaylistsUseCase.getPlaylistWithTracks(playlistId)
+                    .catch { exception ->
+                        _state.update { currentState ->
+                            currentState.copy(
+                                isLoading = false,
+                                error = exception.message ?: "Failed to load playlist"
+                            )
+                        }
+                    }
+                    .collect { playlistWithTracks ->
+                        // Convertir les entités en modèles du domaine
+                        val playlist = playlistWithTracks.playlist.toModel()
+                        val tracks = playlistWithTracks.tracks.map { trackEntity ->
+                            trackEntity.toModel()
+                        }
+
                         val totalDuration = formatTotalDuration(
-                            playlistWithTracks.tracks.sumOf { it.duration }
+                            tracks.sumOf { track -> track.duration }
                         )
 
-                        _state.update { it.copy(
-                            playlist = playlistWithTracks.playlist,
-                            tracks = playlistWithTracks.tracks,
-                            totalDuration = totalDuration,
-                            isLoading = false
-                        )}
-                    },
-                    onFailure = { exception ->
-                        _state.update { it.copy(
-                            isLoading = false,
-                            error = exception.message ?: "Failed to load playlist"
-                        )}
+                        _state.update { currentState ->
+                            currentState.copy(
+                                playlist = playlist,
+                                tracks = tracks,
+                                totalDuration = totalDuration,
+                                isLoading = false,
+                                error = null
+                            )
+                        }
                     }
-                )
             } catch (e: Exception) {
-                _state.update { it.copy(
-                    isLoading = false,
-                    error = e.message ?: "Unknown error"
-                )}
+                _state.update { currentState ->
+                    currentState.copy(
+                        isLoading = false,
+                        error = e.message ?: "Unknown error"
+                    )
+                }
             }
         }
     }
 
     fun updatePlaylist(playlistId: Long, name: String, description: String?) {
         viewModelScope.launch {
-            updatePlaylistUseCase.updateName(playlistId, name)
-            updatePlaylistUseCase.updateDescription(playlistId, description)
+            try {
+                _state.update { it.copy(isLoading = true, error = null) }
 
-            // Recharger la playlist
-            loadPlaylist(playlistId)
+                // Mettre à jour le nom
+                updatePlaylistUseCase.updateName(playlistId, name)
+
+                // Mettre à jour la description si fournie
+                if (description != null) {
+                    updatePlaylistUseCase.updateDescription(playlistId, description)
+                }
+
+                // Recharger la playlist
+                loadPlaylist(playlistId)
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    isLoading = false,
+                    error = exception.message ?: "Failed to update playlist"
+                )}
+            }
         }
     }
 
     fun removeTrack(playlistId: Long, trackId: Long) {
         viewModelScope.launch {
-            removeTrackFromPlaylistUseCase(playlistId, trackId).fold(
-                onSuccess = {
-                    // Recharger la playlist
-                    loadPlaylist(playlistId)
-                },
-                onFailure = { exception ->
-                    _state.update { it.copy(
-                        error = exception.message ?: "Failed to remove track"
-                    )}
+            try {
+                _state.update { it.copy(isLoading = true, error = null) }
+
+                // Supprimer la track de la playlist
+                removeTrackFromPlaylistUseCase(playlistId, trackId)
+
+                // Mise à jour optimiste : retirer immédiatement de l'UI
+                _state.update { currentState ->
+                    val updatedTracks = currentState.tracks.filter { it.id != trackId }
+                    val updatedDuration = formatTotalDuration(
+                        updatedTracks.sumOf { it.duration }
+                    )
+
+                    currentState.copy(
+                        tracks = updatedTracks,
+                        totalDuration = updatedDuration,
+                        isLoading = false
+                    )
                 }
-            )
+            } catch (exception: Exception) {
+                _state.update { it.copy(
+                    isLoading = false,
+                    error = exception.message ?: "Failed to remove track"
+                )}
+
+                // Recharger pour être sûr d'avoir les bonnes données
+                loadPlaylist(playlistId)
+            }
         }
     }
 
+    /**
+     * Jouer toute la playlist
+     */
+    fun playPlaylist() {
+        val currentTracks = _state.value.tracks
+        if (currentTracks.isNotEmpty()) {
+            // TODO: Intégrer avec PlayerViewModel
+            // playerViewModel.playTrack(currentTracks.first(), currentTracks)
+        }
+    }
+
+    /**
+     * Jouer la playlist en mode aléatoire
+     */
+    fun shufflePlaylist() {
+        val currentTracks = _state.value.tracks
+        if (currentTracks.isNotEmpty()) {
+            val shuffledTracks = currentTracks.shuffled()
+            // TODO: Intégrer avec PlayerViewModel
+            // playerViewModel.playTrack(shuffledTracks.first(), shuffledTracks)
+        }
+    }
+
+    /**
+     * Jouer une piste spécifique dans le contexte de la playlist
+     */
+    fun playTrack(track: Track) {
+        val currentTracks = _state.value.tracks
+        // TODO: Intégrer avec PlayerViewModel
+        // playerViewModel.playTrack(track, currentTracks)
+    }
+
+    /**
+     * Effacer le message d'erreur
+     */
+    fun clearError() {
+        _state.update { it.copy(error = null) }
+    }
+
+    /**
+     * Formatte la durée totale en format lisible
+     * Ex: "1h 23min" ou "45min"
+     */
     private fun formatTotalDuration(milliseconds: Long): String {
         val totalSeconds = milliseconds / 1000
         val hours = totalSeconds / 3600
@@ -97,12 +184,22 @@ class PlaylistDetailViewModel @Inject constructor(
             else -> "< 1min"
         }
     }
+
+    /**
+     * Rafraîchir les données de la playlist
+     */
+    fun refresh() {
+        val currentPlaylistId = _state.value.playlist?.id
+        if (currentPlaylistId != null) {
+            loadPlaylist(currentPlaylistId)
+        }
+    }
 }
 
 data class PlaylistDetailState(
     val playlist: Playlist? = null,
     val tracks: List<Track> = emptyList(),
-    val totalDuration: String = "",
+    val totalDuration: String = "0min",
     val isLoading: Boolean = false,
     val error: String? = null
 )

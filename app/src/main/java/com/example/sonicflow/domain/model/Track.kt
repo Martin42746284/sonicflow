@@ -1,35 +1,30 @@
 package com.example.sonicflow.domain.model
 
 data class Track(
-    val id: Long,
+    val id: Long = 0L,
     val title: String,
     val artist: String,
-    val album: String?,
-    val duration: Long, // en millisecondes
+    val album: String,
+    val duration: Long,  // ✅ Propriété nécessaire
     val path: String,
     val albumArtUri: String?,
-    val dateAdded: Long, // timestamp
-    val size: Long, // taille du fichier en bytes
-    val mimeType: String?,
+    val dateAdded: Long,
     val waveformData: String? = null
 ) {
-    // Fonction utilitaire pour formater la durée
+    /**
+     * Formatte la durée en mm:ss
+     */
     fun getFormattedDuration(): String {
-        val totalSeconds = duration / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return String.format("%02d:%02d", minutes, seconds)
+        val seconds = duration / 1000
+        val minutes = seconds / 60
+        val remainingSeconds = seconds % 60
+        return String.format("%d:%02d", minutes, remainingSeconds)
     }
 
-    // Fonction pour obtenir la taille formatée
-    fun getFormattedSize(): String {
-        return when {
-            size < 1024 -> "$size B"
-            size < 1024 * 1024 -> "${size / 1024} KB"
-            else -> String.format("%.2f MB", size / (1024.0 * 1024.0))
-        }
+    /**
+     * Vérifie si la piste a des données de waveform
+     */
+    fun hasWaveform(): Boolean {
+        return !waveformData.isNullOrBlank()
     }
-
-    // Vérifie si la waveform est disponible
-    fun hasWaveform(): Boolean = !waveformData.isNullOrEmpty()
 }

@@ -13,7 +13,7 @@ class SyncTracksUseCase @Inject constructor(
      */
     suspend operator fun invoke(): Result<Unit> {
         return try {
-            trackRepository.syncTracksFromMediaStore()
+            trackRepository.syncTracksFromDevice()  // ✅ Correction : syncTracksFromDevice au lieu de syncTracksFromMediaStore
             val count = trackRepository.getTracksCount()
             Result.success(Unit)
         } catch (e: SecurityException) {

@@ -13,14 +13,34 @@ class GenerateWaveformUseCase @Inject constructor(
 ) {
     /**
      * Génère les données de waveform pour une piste audio
-     * et les stocke dans la base de données pour éviter de recalculer
+     * Version simplifiée qui retourne directement le String (pour PlayerViewModel)
+     *
+     * @param audioPath Chemin du fichier audio
+     * @param samplesCount Nombre d'échantillons à générer (défaut: 100)
+     * @return Les données de waveform en JSON
+     */
+    suspend operator fun invoke(
+        audioPath: String,
+        samplesCount: Int = 100
+    ): String = withContext(Dispatchers.IO) {
+        try {
+            val waveformData = mediaRepository.generateWaveformData(audioPath, samplesCount)
+            waveformData ?: "[]"
+        } catch (e: Exception) {
+            "[]" // Retourne un tableau vide en cas d'erreur
+        }
+    }
+
+    /**
+     * Génère et sauvegarde la waveform pour une piste
+     * Version complète avec sauvegarde en base de données
      *
      * @param trackId ID de la piste
      * @param audioPath Chemin du fichier audio
      * @param samplesCount Nombre d'échantillons à générer (défaut: 100)
-     * @return Les données de waveform en JSON, ou null en cas d'erreur
+     * @return Result avec les données de waveform
      */
-    suspend operator fun invoke(
+    suspend fun generateAndSave(
         trackId: Long,
         audioPath: String,
         samplesCount: Int = 100

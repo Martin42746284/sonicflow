@@ -1,10 +1,9 @@
 package com.example.sonicflow.di
 
 import android.content.Context
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
+import com.google.android.exoplayer2.C
+import com.google.android.exoplayer2.ExoPlayer
+import com.google.android.exoplayer2.audio.AudioAttributes
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -34,16 +33,6 @@ object MediaModule {
         return ExoPlayer.Builder(context)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
-            .build()
-    }
-
-    @Provides
-    @Singleton
-    fun provideMediaSession(
-        @ApplicationContext context: Context,
-        player: ExoPlayer
-    ): MediaSession {
-        return MediaSession.Builder(context, player)
             .build()
     }
 }

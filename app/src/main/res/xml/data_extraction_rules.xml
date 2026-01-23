@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <include domain="sharedpref" path="."/>
-        <include domain="database" path="."/>
-        <include domain="file" path="."/>
+        <!-- Exclure les fichiers sensibles du backup cloud -->
+        <exclude domain="sharedpref" path="auth_prefs.xml"/>
+        <exclude domain="database" path="sonicflow.db"/>
     </cloud-backup>
 </data-extraction-rules>

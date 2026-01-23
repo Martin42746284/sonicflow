@@ -17,16 +17,8 @@ class AddTrackToPlaylistUseCase @Inject constructor(
         trackId: Long
     ): Result<Unit> {
         return try {
-            // Vérifier si la piste existe déjà dans la playlist
-            val alreadyExists = playlistRepository.isTrackInPlaylist(playlistId, trackId)
-
-            if (alreadyExists) {
-                return Result.failure(Exception("Track already exists in this playlist"))
-            }
-
             playlistRepository.addTrackToPlaylist(playlistId, trackId)
             Result.success(Unit)
-
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -43,18 +35,10 @@ class AddTrackToPlaylistUseCase @Inject constructor(
         trackIds: List<Long>
     ): Result<Int> {
         return try {
-            var addedCount = 0
-
             trackIds.forEach { trackId ->
-                val alreadyExists = playlistRepository.isTrackInPlaylist(playlistId, trackId)
-                if (!alreadyExists) {
-                    playlistRepository.addTrackToPlaylist(playlistId, trackId)
-                    addedCount++
-                }
+                playlistRepository.addTrackToPlaylist(playlistId, trackId)
             }
-
-            Result.success(addedCount)
-
+            Result.success(trackIds.size)
         } catch (e: Exception) {
             Result.failure(e)
         }

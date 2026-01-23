@@ -12,6 +12,7 @@ import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// Extension pour créer le DataStore
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "sonicflow_preferences")
 
 @Singleton
@@ -21,31 +22,24 @@ class PreferencesManager @Inject constructor(
 
     private val dataStore = context.dataStore
 
-    // Keys pour les préférences
+    // Clés des préférences
     private object PreferencesKeys {
-        val LAST_PLAYED_TRACK_ID = longPreferencesKey("last_played_track_id")
-        val LAST_PLAYED_POSITION = longPreferencesKey("last_played_position")
-        val LAST_PLAYED_PLAYLIST_ID = longPreferencesKey("last_played_playlist_id")
-        val SHUFFLE_MODE = booleanPreferencesKey("shuffle_mode")
-        val REPEAT_MODE = intPreferencesKey("repeat_mode") // 0: Off, 1: One, 2: All
-        val SORT_ORDER = stringPreferencesKey("sort_order") // "title", "artist", "duration", "date_added"
-        val THEME_MODE = stringPreferencesKey("theme_mode") // "light", "dark", "system"
-        val FIRST_LAUNCH = booleanPreferencesKey("first_launch")
+        val REPEAT_MODE = stringPreferencesKey("repeat_mode")
+        val SHUFFLE_ENABLED = booleanPreferencesKey("shuffle_enabled")
+        val CURRENT_TRACK_ID = longPreferencesKey("current_track_id")
+        val CURRENT_POSITION = longPreferencesKey("current_position")
+        val PLAYBACK_SPEED = floatPreferencesKey("playback_speed")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
+        val SORT_ORDER = stringPreferencesKey("sort_order")
     }
 
-    // Sauvegarder l'état de lecture
-    suspend fun savePlaybackState(trackId: Long, position: Long, playlistId: Long? = null) {
+    suspend fun saveRepeatMode(mode: String) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.LAST_PLAYED_TRACK_ID] = trackId
-            preferences[PreferencesKeys.LAST_PLAYED_POSITION] = position
-            playlistId?.let {
-                preferences[PreferencesKeys.LAST_PLAYED_PLAYLIST_ID] = it
-            }
+            preferences[PreferencesKeys.REPEAT_MODE] = mode
         }
     }
 
-    // Récupérer l'état de lecture
-    val playbackState: Flow<PlaybackState> = dataStore.data
+    val repeatMode: Flow<String> = dataStore.data
         .catch { exception ->
             if (exception is IOException) {
                 emit(emptyPreferences())
@@ -54,112 +48,120 @@ class PreferencesManager @Inject constructor(
             }
         }
         .map { preferences ->
-            PlaybackState(
-                lastPlayedTrackId = preferences[PreferencesKeys.LAST_PLAYED_TRACK_ID] ?: -1L,
-                lastPlayedPosition = preferences[PreferencesKeys.LAST_PLAYED_POSITION] ?: 0L,
-                lastPlayedPlaylistId = preferences[PreferencesKeys.LAST_PLAYED_PLAYLIST_ID]
-            )
+            preferences[PreferencesKeys.REPEAT_MODE] ?: "OFF"
         }
 
-    // Shuffle mode
-    suspend fun setShuffleMode(enabled: Boolean) {
+    suspend fun saveShuffleEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.SHUFFLE_MODE] = enabled
+            preferences[PreferencesKeys.SHUFFLE_ENABLED] = enabled
         }
     }
 
-    val shuffleMode: Flow<Boolean> = dataStore.data
+    val shuffleEnabled: Flow<Boolean> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
         .map { preferences ->
-            preferences[PreferencesKeys.SHUFFLE_MODE] ?: false
+            preferences[PreferencesKeys.SHUFFLE_ENABLED] ?: false
         }
 
-    // Repeat mode
-    suspend fun setRepeatMode(mode: RepeatMode) {
+    suspend fun saveCurrentTrackId(trackId: Long) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.REPEAT_MODE] = mode.value
+            preferences[PreferencesKeys.CURRENT_TRACK_ID] = trackId
         }
     }
 
-    val repeatMode: Flow<RepeatMode> = dataStore.data
+    val currentTrackId: Flow<Long?> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
         .map { preferences ->
-            val mode = preferences[PreferencesKeys.REPEAT_MODE] ?: 0
-            RepeatMode.fromValue(mode)
+            preferences[PreferencesKeys.CURRENT_TRACK_ID]
         }
 
-    // Sort order
-    suspend fun setSortOrder(order: SortOrder) {
+    suspend fun saveCurrentPosition(position: Long) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.SORT_ORDER] = order.name
+            preferences[PreferencesKeys.CURRENT_POSITION] = position
         }
     }
 
-    val sortOrder: Flow<SortOrder> = dataStore.data
+    val currentPosition: Flow<Long> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
         .map { preferences ->
-            val order = preferences[PreferencesKeys.SORT_ORDER] ?: SortOrder.TITLE.name
-            SortOrder.valueOf(order)
+            preferences[PreferencesKeys.CURRENT_POSITION] ?: 0L
         }
 
-    // Theme mode
-    suspend fun setThemeMode(mode: ThemeMode) {
+    suspend fun savePlaybackSpeed(speed: Float) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.THEME_MODE] = mode.name
+            preferences[PreferencesKeys.PLAYBACK_SPEED] = speed
         }
     }
 
-    val themeMode: Flow<ThemeMode> = dataStore.data
+    val playbackSpeed: Flow<Float> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
         .map { preferences ->
-            val mode = preferences[PreferencesKeys.THEME_MODE] ?: ThemeMode.SYSTEM.name
-            ThemeMode.valueOf(mode)
+            preferences[PreferencesKeys.PLAYBACK_SPEED] ?: 1.0f
         }
 
-    // First launch
-    suspend fun setFirstLaunch(isFirst: Boolean) {
+    suspend fun saveThemeMode(mode: String) {
         dataStore.edit { preferences ->
-            preferences[PreferencesKeys.FIRST_LAUNCH] = isFirst
+            preferences[PreferencesKeys.THEME_MODE] = mode
         }
     }
 
-    val isFirstLaunch: Flow<Boolean> = dataStore.data
+    val themeMode: Flow<String> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
         .map { preferences ->
-            preferences[PreferencesKeys.FIRST_LAUNCH] ?: true
+            preferences[PreferencesKeys.THEME_MODE] ?: "SYSTEM"
         }
 
-    // Clear all preferences
+    suspend fun saveSortOrder(order: String) {
+        dataStore.edit { preferences ->
+            preferences[PreferencesKeys.SORT_ORDER] = order
+        }
+    }
+
+    val sortOrder: Flow<String> = dataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[PreferencesKeys.SORT_ORDER] ?: "TITLE_ASC"
+        }
+
     suspend fun clearAll() {
         dataStore.edit { preferences ->
             preferences.clear()
         }
     }
-}
-
-// Data classes et enums
-data class PlaybackState(
-    val lastPlayedTrackId: Long,
-    val lastPlayedPosition: Long,
-    val lastPlayedPlaylistId: Long? = null
-)
-
-enum class RepeatMode(val value: Int) {
-    OFF(0),
-    ONE(1),
-    ALL(2);
-
-    companion object {
-        fun fromValue(value: Int): RepeatMode {
-            return entries.find { it.value == value } ?: OFF
-        }
-    }
-}
-
-enum class SortOrder {
-    TITLE,
-    ARTIST,
-    DURATION,
-    DATE_ADDED
-}
-
-enum class ThemeMode {
-    LIGHT,
-    DARK,
-    SYSTEM
 }

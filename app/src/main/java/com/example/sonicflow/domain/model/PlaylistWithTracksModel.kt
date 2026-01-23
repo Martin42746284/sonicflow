@@ -2,7 +2,7 @@ package com.example.sonicflow.domain.model
 
 data class PlaylistWithTracksModel(
     val playlist: Playlist,
-    val tracks: List<Track>
+    val tracks: List<Track>  // ✅ Corrigé : Track au lieu de Playlist
 ) {
     // Nombre de pistes dans la playlist
     val trackCount: Int

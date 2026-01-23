@@ -1,11 +1,7 @@
 package com.example.sonicflow.di
 
-import com.example.sonicflow.data.repository.MediaRepositoryImpl
-import com.example.sonicflow.data.repository.PlaylistRepositoryImpl
-import com.example.sonicflow.data.repository.TrackRepositoryImpl
-import com.example.sonicflow.domain.repository.MediaRepository
-import com.example.sonicflow.domain.repository.PlaylistRepository
-import com.example.sonicflow.domain.repository.TrackRepository
+import com.example.sonicflow.data.repository.*
+import com.example.sonicflow.domain.repository.*
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -33,4 +29,11 @@ abstract class RepositoryModule {
     abstract fun bindMediaRepository(
         mediaRepositoryImpl: MediaRepositoryImpl
     ): MediaRepository
+
+    // AJOUTER CETTE MÉTHODE
+    @Binds
+    @Singleton
+    abstract fun bindPlayerRepository(
+        playerRepositoryImpl: PlayerRepositoryImpl
+    ): PlayerRepository
 }

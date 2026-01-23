@@ -1,8 +1,10 @@
 package com.example.sonicflow.domain.usecase.waveform
 
-import androidx.compose.remote.creation.compose.state.pow
 import kotlin.math.abs
+import kotlin.math.log10
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 /**
  * Classe helper pour les calculs de waveform
@@ -48,7 +50,7 @@ object WaveformHelper {
         if (waveformData.isEmpty()) return 0f
 
         val sumOfSquares = waveformData.map { it * it }.sum()
-        return kotlin.math.sqrt(sumOfSquares / waveformData.size)
+        return sqrt(sumOfSquares / waveformData.size)
     }
 
     /**
@@ -81,13 +83,13 @@ object WaveformHelper {
      */
     fun amplitudeToDecibels(amplitude: Float): Float {
         if (amplitude <= 0f) return -96f // Silence
-        return 20f * kotlin.math.log10(amplitude)
+        return 20f * log10(amplitude)
     }
 
     /**
      * Convertit les décibels en amplitude
      */
     fun decibelsToAmplitude(decibels: Float): Float {
-        return kotlin.math.pow(10.0, (decibels / 20.0).toDouble()).toFloat()
+        return 10.0.pow((decibels / 20.0)).toFloat()
     }
 }

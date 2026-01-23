@@ -3,6 +3,7 @@ package com.example.sonicflow.domain.usecase.playlist
 import com.example.sonicflow.domain.model.Track
 import com.example.sonicflow.domain.repository.PlaylistRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.firstOrNull
 import javax.inject.Inject
 
 class GetTracksForPlaylistUseCase @Inject constructor(
@@ -22,7 +23,8 @@ class GetTracksForPlaylistUseCase @Inject constructor(
      */
     suspend fun getTrackCount(playlistId: Long): Result<Int> {
         return try {
-            val count = playlistRepository.getTrackCountForPlaylist(playlistId)
+            val tracks = playlistRepository.getTracksForPlaylist(playlistId).firstOrNull()
+            val count = tracks?.size ?: 0
             Result.success(count)
         } catch (e: Exception) {
             Result.failure(e)
