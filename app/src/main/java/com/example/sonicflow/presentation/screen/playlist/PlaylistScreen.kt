@@ -18,7 +18,6 @@ import com.example.sonicflow.presentation.screen.playlist.components.PlaylistIte
 
 /**
  * Écran principal des playlists
- * Semaine 3, Jours 18-19 : UI de gestion des playlists
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

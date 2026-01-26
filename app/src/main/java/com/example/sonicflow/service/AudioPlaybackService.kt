@@ -27,7 +27,6 @@ import javax.inject.Inject
 
 /**
  * Service de lecture audio en arrière-plan
- * Semaine 2, Jours 8-12 : Implémentation ExoPlayer + MediaSession + Notifications
  */
 @AndroidEntryPoint
 class AudioPlaybackService : MediaBrowserServiceCompat() {

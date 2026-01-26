@@ -27,7 +27,6 @@ import com.example.sonicflow.domain.model.Track
 
 /**
  * Écran de la bibliothèque musicale
- * Semaine 1, Jours 6-7 : UI + Tri et Filtrage
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

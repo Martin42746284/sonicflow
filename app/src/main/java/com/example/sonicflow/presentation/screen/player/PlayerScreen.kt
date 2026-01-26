@@ -35,8 +35,6 @@ import coil.compose.SubcomposeAsyncImage
 
 /**
  * Écran du lecteur audio principal
- * Semaine 2, Jours 13-14 : UI du Lecteur
- * Semaine 4, Jours 25-26 : Waveform
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -19,7 +19,6 @@ import com.example.sonicflow.domain.model.Track
 
 /**
  * Écran de détail d'une playlist
- * Semaine 3, Jours 18-19
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

@@ -14,7 +14,6 @@ import com.example.sonicflow.presentation.util.Constants
 
 /**
  * Helper pour créer différents types de notifications
- * Utilitaire général pour les notifications de l'app
  */
 object NotificationHelper {
 

@@ -26,7 +26,6 @@ import java.net.URL
 
 /**
  * Gère les notifications du lecteur audio
- * Semaine 2, Jours 11-12 : Notifications media
  */
 class MediaNotificationManager(
     private val context: Context,

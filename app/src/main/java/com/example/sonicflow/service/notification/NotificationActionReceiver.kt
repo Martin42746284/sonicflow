@@ -7,7 +7,6 @@ import com.example.sonicflow.service.AudioPlaybackService
 
 /**
  * Receiver pour gérer les actions de la notification
- * Semaine 2, Jours 11-12
  */
 class NotificationActionReceiver : BroadcastReceiver() {
 
