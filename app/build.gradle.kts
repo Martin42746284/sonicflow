@@ -1,7 +1,6 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.hilt.android)
     alias(libs.plugins.ksp)
 }
@@ -47,8 +46,9 @@ android {
         compose = true
     }
 
+    // ✅ Configuration manuelle du Compose Compiler (méthode ancienne)
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.15"
+        kotlinCompilerExtensionVersion = "1.5.14"
     }
 
     packaging {
@@ -58,7 +58,7 @@ android {
     }
 }
 
-// ✅ SOLUTION : Forcer la version compatible de JavaPoet
+// ✅ Forcer JavaPoet
 configurations.all {
     resolutionStrategy {
         force("com.squareup:javapoet:1.13.0")
@@ -66,6 +66,9 @@ configurations.all {
 }
 
 dependencies {
+    // ✅ Ajouter JavaPoet explicitement
+    implementation("com.squareup:javapoet:1.13.0")
+
     // Android Core
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -78,8 +81,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.foundation)
-
-    // Material Icons Extended
     implementation(libs.androidx.compose.material.icons.extended)
 
     // Hilt
@@ -100,11 +101,9 @@ dependencies {
     // Navigation
     implementation(libs.navigation.compose)
 
-    // ExoPlayer 2 (avec extension MediaSession)
+    // ExoPlayer 2
     implementation(libs.exoplayer.core)
     implementation(libs.exoplayer.mediasession)
-
-    // Media Support (MediaBrowserCompat, MediaControllerCompat)
     implementation(libs.androidx.media)
     implementation(libs.androidx.legacy.support.v4)
 
@@ -116,7 +115,7 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
 
-    // Coil pour les images
+    // Coil
     implementation(libs.coil.compose)
 
     // Splash Screen
