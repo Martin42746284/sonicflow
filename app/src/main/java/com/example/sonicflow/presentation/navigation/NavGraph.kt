@@ -20,7 +20,7 @@ import com.example.sonicflow.presentation.screen.playlist.PlaylistScreen
 @Composable
 fun NavGraph(
     navController: NavHostController = rememberNavController(),
-    startDestination: String = Screen.SignIn.route
+    startDestination: String = Screen.Library.route // ✅ Démarrer directement sur Library (enlever auth pour dev)
 ) {
     NavHost(
         navController = navController,
@@ -58,9 +58,7 @@ fun NavGraph(
 
         composable(route = Screen.Library.route) {
             LibraryScreen(
-                onTrackClick = { track ->
-                    navController.navigate(Screen.Player.route)
-                },
+                // ✅ Plus besoin de onTrackClick, géré directement dans LibraryScreen
                 onNavigateToPlayer = {
                     navController.navigate(Screen.Player.route)
                 }

@@ -16,6 +16,7 @@ import javax.inject.Inject
 /**
  * ViewModel pour l'écran Library
  * Semaine 1, Jours 6-7
+ * Avec scan automatique au démarrage
  */
 @HiltViewModel
 class LibraryViewModel @Inject constructor(
@@ -33,7 +34,7 @@ class LibraryViewModel @Inject constructor(
 
     init {
         observeTracks()
-        checkAndSyncIfNeeded()
+        // ✅ Le scan automatique sera déclenché depuis LibraryScreen après la permission
     }
 
     private fun observeTracks() {
@@ -67,14 +68,10 @@ class LibraryViewModel @Inject constructor(
         }
     }
 
-    private fun checkAndSyncIfNeeded() {
-        viewModelScope.launch {
-            if (syncTracksUseCase.isSyncNeeded()) {
-                syncTracks()
-            }
-        }
-    }
-
+    /**
+     * ✅ Méthode publique pour scanner les pistes
+     * Appelée automatiquement depuis LibraryScreen après l'obtention de la permission
+     */
     fun syncTracks() {
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null) }
@@ -89,6 +86,14 @@ class LibraryViewModel @Inject constructor(
                 )}
             }
         }
+    }
+
+    /**
+     * ✅ Vérifier si un scan est nécessaire (base de données vide)
+     * Utilisé pour décider si on doit scanner automatiquement
+     */
+    fun isSyncNeeded(): Boolean {
+        return state.value.tracks.isEmpty()
     }
 
     fun onSearchQueryChange(query: String) {
@@ -115,6 +120,20 @@ class LibraryViewModel @Inject constructor(
             SortOrder.DATE_ADDED_ASC -> tracks.sortedBy { it.dateAdded }
             SortOrder.DATE_ADDED_DESC -> tracks.sortedByDescending { it.dateAdded }
         }
+    }
+
+    /**
+     * ✅ Méthode pour forcer un refresh manuel (bouton refresh)
+     */
+    fun refreshTracks() {
+        syncTracks()
+    }
+
+    /**
+     * ✅ Réinitialiser l'erreur
+     */
+    fun clearError() {
+        _state.update { it.copy(error = null) }
     }
 }
 

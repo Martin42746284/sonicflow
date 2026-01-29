@@ -13,7 +13,7 @@ fun TrackEntity.toModel(): Track {
         artist = this.artist,
         album = this.album ?: "Unknown Album",
         duration = this.duration,
-        path = this.path,
+        path = this.data,
         albumArtUri = this.albumArtUri,
         dateAdded = this.dateAdded,
         waveformData = this.waveformData
@@ -30,7 +30,7 @@ fun Track.toEntity(): TrackEntity {
         artist = this.artist,
         album = this.album,
         duration = this.duration,
-        path = this.path,
+        data = this.path,
         albumArtUri = this.albumArtUri,
         dateAdded = this.dateAdded,
         waveformData = this.waveformData

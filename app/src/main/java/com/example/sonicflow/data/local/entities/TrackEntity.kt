@@ -13,14 +13,17 @@ import androidx.room.PrimaryKey
     ]
 )
 data class TrackEntity(
-    @PrimaryKey(autoGenerate = true)
-    val id: Long = 0L,
+    @PrimaryKey
+    val id: Long,
     val title: String,
     val artist: String,
-    val album: String?,
+    val album: String,
     val duration: Long,
-    val path: String,
     val albumArtUri: String?,
+    val data: String,
     val dateAdded: Long,
-    val waveformData: String? = null
+    val waveformData: String? = null,
+    val playCount: Int = 0,
+    val lastPlayedDate: Long? = null,
+    val isFavorite: Boolean = false
 )

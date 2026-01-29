@@ -11,6 +11,7 @@ import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
+import android.util.Log
 import androidx.media.MediaBrowserServiceCompat
 import com.example.sonicflow.domain.model.Track
 import com.example.sonicflow.presentation.util.Constants
@@ -23,6 +24,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import javax.inject.Inject
 
 /**
@@ -53,6 +55,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
     private var isForegroundService = false
 
     companion object {
+        private const val TAG = "AudioPlaybackService"
         private const val MEDIA_ROOT_ID = "root_id"
         private const val EMPTY_MEDIA_ROOT_ID = "empty_root_id"
     }
@@ -65,6 +68,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
     private val binder = LocalBinder()
 
     override fun onBind(intent: Intent?): IBinder? {
+        Log.d(TAG, "🔗 onBind appelé - action: ${intent?.action}")
         return if (intent?.action == "android.media.browse.MediaBrowserService") {
             super.onBind(intent)
         } else {
@@ -74,6 +78,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "🎬 Service créé")
 
         // Créer la MediaSession
         val sessionActivityPendingIntent = packageManager
@@ -93,6 +98,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         }
 
         sessionToken = mediaSession.sessionToken
+        Log.d(TAG, "✅ MediaSession créée")
 
         // Connecter ExoPlayer à MediaSession
         mediaSessionConnector = MediaSessionConnector(mediaSession).apply {
@@ -104,26 +110,40 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
             })
         }
 
+        Log.d(TAG, "✅ MediaSessionConnector configuré")
+
         // Créer le notification manager
         notificationManager = MediaNotificationManager(this, mediaSession)
+        Log.d(TAG, "✅ NotificationManager créé")
 
         // Listener pour les changements d'état du player
         exoPlayer.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
+                val stateName = when (playbackState) {
+                    Player.STATE_IDLE -> "IDLE"
+                    Player.STATE_BUFFERING -> "BUFFERING"
+                    Player.STATE_READY -> "READY"
+                    Player.STATE_ENDED -> "ENDED"
+                    else -> "UNKNOWN"
+                }
+                Log.d(TAG, "🔄 État de lecture changé: $stateName")
+
                 when (playbackState) {
                     Player.STATE_READY -> {
                         if (exoPlayer.playWhenReady) {
+                            Log.d(TAG, "▶️ Lecture prête, démarrage du foreground service")
                             startForegroundService()
                         }
                     }
                     Player.STATE_ENDED -> {
-                        // Piste terminée, passer à la suivante
+                        Log.d(TAG, "⏭️ Piste terminée, passage à la suivante")
                         skipToNext()
                     }
                 }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                Log.d(TAG, "🎵 isPlaying changé: $isPlaying")
                 _isPlaying.value = isPlaying
                 updateNotification()
 
@@ -135,80 +155,140 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                // Gérer les erreurs de lecture
+                Log.e(TAG, "❌ Erreur de lecture: ${error.message}", error)
+                Log.e(TAG, "❌ Type d'erreur: ${error.errorCode}")
+                Log.e(TAG, "❌ Cause: ${error.cause}")
                 stopForegroundService()
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                Log.d(TAG, "🎵 Transition vers: ${mediaItem?.mediaMetadata?.title}")
             }
         })
 
         // Callback pour les actions de la MediaSession
         mediaSession.setCallback(object : MediaSessionCompat.Callback() {
             override fun onPlay() {
+                Log.d(TAG, "▶️ onPlay appelé")
                 exoPlayer.playWhenReady = true
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
             }
 
             override fun onPause() {
+                Log.d(TAG, "⏸️ onPause appelé")
                 exoPlayer.playWhenReady = false
                 updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
             }
 
             override fun onStop() {
+                Log.d(TAG, "⏹️ onStop appelé")
                 stopSelf()
             }
 
             override fun onSkipToNext() {
+                Log.d(TAG, "⏭️ onSkipToNext appelé")
                 skipToNext()
             }
 
             override fun onSkipToPrevious() {
+                Log.d(TAG, "⏮️ onSkipToPrevious appelé")
                 skipToPrevious()
             }
 
             override fun onSeekTo(pos: Long) {
+                Log.d(TAG, "⏩ onSeekTo: $pos ms")
                 exoPlayer.seekTo(pos)
                 _currentPosition.value = pos
             }
         })
+
+        Log.d(TAG, "✅ Service complètement initialisé")
     }
 
     /**
-     * Joue une piste
+     * ✅ Joue une piste avec vérification du fichier
      */
     fun playTrack(track: Track) {
         serviceScope.launch {
-            _currentTrack.value = track
+            try {
+                Log.d(TAG, "🎵 Tentative de lecture: ${track.title}")
+                Log.d(TAG, "📂 Chemin: ${track.path}")
 
-            // Créer MediaItem depuis la piste
-            val mediaItem = MediaItem.Builder()
-                .setUri(track.path)
-                .setMediaId(track.id.toString())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(track.title)
-                        .setArtist(track.artist)
-                        .setAlbumTitle(track.album)
-                        .setArtworkUri(Uri.parse(track.albumArtUri))
-                        .build()
-                )
-                .build()
+                _currentTrack.value = track
 
-            // Préparer et jouer
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            exoPlayer.playWhenReady = true
+                // ✅ Vérifier que le fichier existe
+                val file = File(track.path)
+                if (!file.exists()) {
+                    Log.e(TAG, "❌ Le fichier n'existe pas: ${track.path}")
+                    return@launch
+                }
 
-            updateMediaSessionMetadata(track)
-            updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                Log.d(TAG, "✅ Fichier trouvé, taille: ${file.length()} bytes")
+
+                // ✅ Créer l'URI correctement
+                val uri = Uri.fromFile(file)
+                Log.d(TAG, "📍 URI créé: $uri")
+
+                // Créer MediaItem depuis la piste
+                val mediaItem = MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaId(track.id.toString())
+                    .setMediaMetadata(
+                        MediaMetadata.Builder()
+                            .setTitle(track.title)
+                            .setArtist(track.artist)
+                            .setAlbumTitle(track.album)
+                            .setArtworkUri(Uri.parse(track.albumArtUri ?: ""))
+                            .build()
+                    )
+                    .build()
+
+                Log.d(TAG, "📦 MediaItem créé")
+
+                // Préparer et jouer
+                exoPlayer.setMediaItem(mediaItem)
+                exoPlayer.prepare()
+                exoPlayer.playWhenReady = true
+
+                Log.d(TAG, "✅ ExoPlayer préparé et playWhenReady = true")
+
+                updateMediaSessionMetadata(track)
+                updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+
+                Log.d(TAG, "✅ Métadonnées et état mis à jour")
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Exception lors de playTrack: ${e.message}", e)
+            }
         }
+    }
+
+    /**
+     * ✅ Pause la lecture
+     */
+    fun pause() {
+        Log.d(TAG, "⏸️ Pause demandée")
+        exoPlayer.playWhenReady = false
+        updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+    }
+
+    /**
+     * ✅ Reprend la lecture
+     */
+    fun play() {
+        Log.d(TAG, "▶️ Play demandée")
+        exoPlayer.playWhenReady = true
+        updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
     }
 
     /**
      * Met à jour la queue de lecture
      */
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
+        Log.d(TAG, "📋 Mise à jour de la queue: ${tracks.size} pistes, index: $startIndex")
+
         val mediaItems = tracks.map { track ->
             MediaItem.Builder()
-                .setUri(track.path)
+                .setUri(Uri.fromFile(File(track.path)))
                 .setMediaId(track.id.toString())
                 .setMediaMetadata(
                     MediaMetadata.Builder()
@@ -222,6 +302,8 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
 
         exoPlayer.setMediaItems(mediaItems, startIndex, 0L)
         exoPlayer.prepare()
+
+        Log.d(TAG, "✅ Queue mise à jour")
     }
 
     /**
@@ -229,7 +311,10 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      */
     private fun skipToNext() {
         if (exoPlayer.hasNextMediaItem()) {
+            Log.d(TAG, "⏭️ Passage à la piste suivante")
             exoPlayer.seekToNextMediaItem()
+        } else {
+            Log.d(TAG, "⚠️ Aucune piste suivante disponible")
         }
     }
 
@@ -238,10 +323,13 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      */
     private fun skipToPrevious() {
         if (exoPlayer.currentPosition > Constants.Player.SEEK_BACK_THRESHOLD_MS) {
-            // Si on est à plus de 3s, recommencer la piste actuelle
+            Log.d(TAG, "⏮️ Retour au début de la piste")
             exoPlayer.seekTo(0)
         } else if (exoPlayer.hasPreviousMediaItem()) {
+            Log.d(TAG, "⏮️ Passage à la piste précédente")
             exoPlayer.seekToPreviousMediaItem()
+        } else {
+            Log.d(TAG, "⚠️ Aucune piste précédente disponible")
         }
     }
 
@@ -284,7 +372,9 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      * Met à jour la notification
      */
     private fun updateNotification() {
-        notificationManager.updateNotification(_currentTrack.value, _isPlaying.value)
+        if (isForegroundService) {
+            notificationManager.updateNotification(_currentTrack.value, _isPlaying.value)
+        }
     }
 
     /**
@@ -292,12 +382,14 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      */
     private fun startForegroundService() {
         if (!isForegroundService) {
+            Log.d(TAG, "🚀 Démarrage du service en foreground")
             val notification = notificationManager.buildNotification(
                 _currentTrack.value,
                 _isPlaying.value
             )
             startForeground(Constants.Player.NOTIFICATION_ID, notification)
             isForegroundService = true
+            Log.d(TAG, "✅ Service en foreground démarré")
         }
     }
 
@@ -306,6 +398,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      */
     private fun stopForegroundService() {
         if (isForegroundService) {
+            Log.d(TAG, "🛑 Arrêt du service foreground")
             stopForeground(STOP_FOREGROUND_REMOVE)
             isForegroundService = false
         }
@@ -348,6 +441,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         clientUid: Int,
         rootHints: Bundle?
     ): BrowserRoot {
+        Log.d(TAG, "📱 onGetRoot appelé par: $clientPackageName")
         return BrowserRoot(MEDIA_ROOT_ID, null)
     }
 
@@ -355,13 +449,13 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         parentId: String,
         result: Result<MutableList<MediaBrowserCompat.MediaItem>>
     ) {
-        // Pour l'instant, retourner une liste vide
-        // Peut être implémenté plus tard pour le browsing
+        Log.d(TAG, "📂 onLoadChildren appelé: $parentId")
         result.sendResult(mutableListOf())
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        Log.d(TAG, "🧹 Service détruit")
 
         serviceScope.cancel()
         exoPlayer.release()
@@ -374,6 +468,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
+        Log.d(TAG, "📱 Tâche supprimée du récent")
 
         // Arrêter le service quand l'app est supprimée du récent
         if (!_isPlaying.value) {

@@ -121,6 +121,8 @@ dependencies {
     // Splash Screen
     implementation(libs.androidx.core.splashscreen)
 
+    implementation(libs.accompanist.permissions)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

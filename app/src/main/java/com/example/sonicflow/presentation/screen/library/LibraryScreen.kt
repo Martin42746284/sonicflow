@@ -1,5 +1,9 @@
 package com.example.sonicflow.presentation.screen.library
 
+import android.Manifest
+import android.os.Build
+import android.util.Log
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -14,40 +18,76 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.compose.material.icons.filled.MoreVert
 import coil.compose.SubcomposeAsyncImage
 import com.example.sonicflow.data.local.preferences.SortOrder
 import com.example.sonicflow.domain.model.Track
+import com.example.sonicflow.presentation.screen.player.PlayerViewModel
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 
 /**
- * Écran de la bibliothèque musicale
+ * Écran de la bibliothèque musicale avec scan automatique
  */
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun LibraryScreen(
-    onTrackClick: (Track) -> Unit,
     onNavigateToPlayer: () -> Unit,
-    viewModel: LibraryViewModel = hiltViewModel()
+    libraryViewModel: LibraryViewModel = hiltViewModel(),
+    playerViewModel: PlayerViewModel = hiltViewModel() // ✅ Ajouter PlayerViewModel
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by libraryViewModel.state.collectAsState()
+    val context = LocalContext.current
+
     var showSortMenu by remember { mutableStateOf(false) }
     var showSearchBar by remember { mutableStateOf(false) }
+
+    // ✅ Définir les permissions selon la version Android
+    val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        listOf(Manifest.permission.READ_MEDIA_AUDIO)
+    } else {
+        listOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    // ✅ État des permissions avec Accompanist
+    val permissionsState = rememberMultiplePermissionsState(permissions)
+
+    // ✅ Demander la permission et scanner automatiquement au démarrage
+    LaunchedEffect(Unit) {
+        Log.d("LibraryScreen", "🔍 Vérification des permissions...")
+        if (permissionsState.allPermissionsGranted) {
+            Log.d("LibraryScreen", "✅ Permissions accordées")
+            // Permission déjà accordée, scanner automatiquement
+            libraryViewModel.syncTracks()
+        } else {
+            Log.d("LibraryScreen", "⚠️ Permissions non accordées, demande en cours...")
+            // Demander la permission
+            permissionsState.launchMultiplePermissionRequest()
+        }
+    }
+
+    // ✅ Scanner automatiquement quand la permission est accordée
+    LaunchedEffect(permissionsState.allPermissionsGranted) {
+        if (permissionsState.allPermissionsGranted && state.tracks.isEmpty()) {
+            Log.d("LibraryScreen", "🔄 Lancement du scan automatique...")
+            libraryViewModel.syncTracks()
+        }
+    }
 
     Scaffold(
         topBar = {
             if (showSearchBar) {
                 SearchBar(
                     query = state.searchQuery,
-                    onQueryChange = viewModel::onSearchQueryChange,
+                    onQueryChange = libraryViewModel::onSearchQueryChange,
                     onClose = {
                         showSearchBar = false
-                        viewModel.onSearchQueryChange("")
+                        libraryViewModel.onSearchQueryChange("")
                     }
                 )
             } else {
@@ -60,7 +100,6 @@ fun LibraryScreen(
                         )
                     },
                     actions = {
-                        // Bouton recherche
                         IconButton(onClick = { showSearchBar = true }) {
                             Icon(
                                 imageVector = Icons.Default.Search,
@@ -68,7 +107,6 @@ fun LibraryScreen(
                             )
                         }
 
-                        // Bouton tri
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
                                 Icon(
@@ -77,7 +115,6 @@ fun LibraryScreen(
                                 )
                             }
 
-                            // Menu de tri
                             DropdownMenu(
                                 expanded = showSortMenu,
                                 onDismissRequest = { showSortMenu = false }
@@ -86,7 +123,7 @@ fun LibraryScreen(
                                     DropdownMenuItem(
                                         text = { Text(getSortOrderLabel(sortOrder)) },
                                         onClick = {
-                                            viewModel.onSortOrderChange(sortOrder)
+                                            libraryViewModel.onSortOrderChange(sortOrder)
                                             showSortMenu = false
                                         },
                                         leadingIcon = {
@@ -102,8 +139,10 @@ fun LibraryScreen(
                             }
                         }
 
-                        // Bouton refresh
-                        IconButton(onClick = { viewModel.syncTracks() }) {
+                        IconButton(onClick = {
+                            Log.d("LibraryScreen", "🔄 Bouton refresh cliqué")
+                            libraryViewModel.syncTracks()
+                        }) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = "Refresh"
@@ -117,8 +156,12 @@ fun LibraryScreen(
             if (state.tracks.isNotEmpty()) {
                 FloatingActionButton(
                     onClick = {
+                        Log.d("LibraryScreen", "▶️ Play All cliqué")
                         state.tracks.firstOrNull()?.let { track ->
-                            onTrackClick(track)
+                            playerViewModel.playTrack(
+                                track = track,
+                                queue = state.tracks
+                            )
                             onNavigateToPlayer()
                         }
                     }
@@ -137,23 +180,43 @@ fun LibraryScreen(
                 .padding(paddingValues)
         ) {
             when {
-                state.isLoading -> {
-                    CircularProgressIndicator(
+                // ✅ Afficher l'écran de permission si non accordée
+                !permissionsState.allPermissionsGranted -> {
+                    PermissionRequestView(
+                        permissionsState = permissionsState,
                         modifier = Modifier.align(Alignment.Center)
                     )
+                }
+
+                state.isLoading -> {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        CircularProgressIndicator()
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Scanning for music...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
 
                 state.error != null -> {
                     ErrorView(
                         error = state.error!!,
-                        onRetry = { viewModel.syncTracks() },
+                        onRetry = { libraryViewModel.syncTracks() },
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
 
                 state.tracks.isEmpty() && !state.isLoading -> {
                     EmptyLibraryView(
-                        onSyncClick = { viewModel.syncTracks() },
+                        onSyncClick = {
+                            Log.d("LibraryScreen", "🔄 Scan manuel déclenché")
+                            libraryViewModel.syncTracks()
+                        },
                         modifier = Modifier.align(Alignment.Center)
                     )
                 }
@@ -163,7 +226,6 @@ fun LibraryScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(vertical = 8.dp)
                     ) {
-                        // En-tête avec statistiques
                         item {
                             LibraryHeader(
                                 trackCount = state.tracks.size,
@@ -171,7 +233,6 @@ fun LibraryScreen(
                             )
                         }
 
-                        // Liste des pistes
                         items(
                             items = state.tracks,
                             key = { it.id }
@@ -179,15 +240,76 @@ fun LibraryScreen(
                             TrackItem(
                                 track = track,
                                 onClick = {
-                                    onTrackClick(track)
+                                    // ✅ Appeler PlayerViewModel pour lire la piste
+                                    Log.d("LibraryScreen", "🎵 Track cliqué: ${track.title}")
+                                    Log.d("LibraryScreen", "📂 Chemin: ${track.path}")
+
+                                    playerViewModel.playTrack(
+                                        track = track,
+                                        queue = state.tracks
+                                    )
                                     onNavigateToPlayer()
                                 },
-                                modifier = Modifier.animateItem()
+                                modifier = Modifier.animateContentSize()
                             )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+// ✅ Nouveau composant pour demander la permission
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+private fun PermissionRequestView(
+    permissionsState: com.google.accompanist.permissions.MultiplePermissionsState,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.Folder,
+            contentDescription = null,
+            modifier = Modifier.size(80.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = "Storage Permission Required",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "We need access to your storage to scan and play music files on your device",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = {
+                Log.d("LibraryScreen", "🔐 Demande de permission lancée")
+                permissionsState.launchMultiplePermissionRequest()
+            },
+            modifier = Modifier.height(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Check,
+                contentDescription = null
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Grant Permission")
         }
     }
 }

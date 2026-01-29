@@ -1,5 +1,6 @@
 package com.example.sonicflow.presentation.screen.playlist
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -111,7 +112,7 @@ fun PlaylistScreen(
                                 trackCount = state.playlistTrackCounts[playlist.id] ?: 0,
                                 onClick = { onPlaylistClick(playlist.id) },
                                 onDelete = { showDeleteDialog = playlist },
-                                modifier = Modifier.animateItem()
+                                modifier = Modifier.animateContentSize()
                             )
                         }
                     }
