@@ -1,4 +1,4 @@
-package com.example.sonicflow.data.repository
+package com.example.sonicflow.domain.repository
 
 import com.example.sonicflow.domain.model.RepeatMode
 import com.example.sonicflow.domain.model.Track

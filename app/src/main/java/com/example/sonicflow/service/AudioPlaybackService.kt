@@ -60,158 +60,185 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         private const val EMPTY_MEDIA_ROOT_ID = "empty_root_id"
     }
 
-    // LocalBinder pour la connexion depuis MainActivity
+    // ✅ LocalBinder pour la connexion depuis MainActivity
     inner class LocalBinder : Binder() {
-        fun getService(): AudioPlaybackService = this@AudioPlaybackService
+        fun getService(): AudioPlaybackService {
+            Log.d(TAG, "🔗 LocalBinder.getService() appelé")
+            return this@AudioPlaybackService
+        }
     }
 
     private val binder = LocalBinder()
 
     override fun onBind(intent: Intent?): IBinder? {
-        Log.d(TAG, "🔗 onBind appelé - action: ${intent?.action}")
+        Log.d(TAG, "🔗 onBind appelé")
+        Log.d(TAG, "🔗 Intent: $intent")
+        Log.d(TAG, "🔗 Action: ${intent?.action}")
+        Log.d(TAG, "🔗 Package: ${intent?.`package`}")
+
         return if (intent?.action == "android.media.browse.MediaBrowserService") {
+            Log.d(TAG, "🔗 Retour: super.onBind() pour MediaBrowserService")
             super.onBind(intent)
         } else {
+            Log.d(TAG, "🔗 Retour: LocalBinder pour connexion directe")
             binder
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "🚀 onStartCommand appelé")
+        Log.d(TAG, "🚀 Intent: $intent")
+        Log.d(TAG, "🚀 Flags: $flags")
+        Log.d(TAG, "🚀 StartId: $startId")
+        return super.onStartCommand(intent, flags, startId)
+    }
+
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "🎬 Service créé")
+        Log.d(TAG, "🎬 Service onCreate appelé")
+        Log.d(TAG, "🎬 Thread: ${Thread.currentThread().name}")
 
-        // Créer la MediaSession
-        val sessionActivityPendingIntent = packageManager
-            ?.getLaunchIntentForPackage(packageName)
-            ?.let { sessionIntent ->
-                PendingIntent.getActivity(
-                    this,
-                    0,
-                    sessionIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
+        try {
+            // Créer la MediaSession
+            val sessionActivityPendingIntent = packageManager
+                ?.getLaunchIntentForPackage(packageName)
+                ?.let { sessionIntent ->
+                    PendingIntent.getActivity(
+                        this,
+                        0,
+                        sessionIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                }
+
+            mediaSession = MediaSessionCompat(this, "AudioPlaybackService").apply {
+                setSessionActivity(sessionActivityPendingIntent)
+                isActive = true
             }
 
-        mediaSession = MediaSessionCompat(this, "AudioPlaybackService").apply {
-            setSessionActivity(sessionActivityPendingIntent)
-            isActive = true
-        }
+            sessionToken = mediaSession.sessionToken
+            Log.d(TAG, "✅ MediaSession créée")
 
-        sessionToken = mediaSession.sessionToken
-        Log.d(TAG, "✅ MediaSession créée")
+            // Connecter ExoPlayer à MediaSession
+            mediaSessionConnector = MediaSessionConnector(mediaSession).apply {
+                setPlayer(exoPlayer)
+                setQueueNavigator(object : TimelineQueueNavigator(mediaSession) {
+                    override fun getMediaDescription(player: Player, windowIndex: Int): MediaDescriptionCompat {
+                        return getMediaDescription(_currentTrack.value)
+                    }
+                })
+            }
 
-        // Connecter ExoPlayer à MediaSession
-        mediaSessionConnector = MediaSessionConnector(mediaSession).apply {
-            setPlayer(exoPlayer)
-            setQueueNavigator(object : TimelineQueueNavigator(mediaSession) {
-                override fun getMediaDescription(player: Player, windowIndex: Int): MediaDescriptionCompat {
-                    return getMediaDescription(_currentTrack.value)
-                }
-            })
-        }
+            Log.d(TAG, "✅ MediaSessionConnector configuré")
 
-        Log.d(TAG, "✅ MediaSessionConnector configuré")
+            // Créer le notification manager
+            notificationManager = MediaNotificationManager(this, mediaSession)
+            Log.d(TAG, "✅ NotificationManager créé")
 
-        // Créer le notification manager
-        notificationManager = MediaNotificationManager(this, mediaSession)
-        Log.d(TAG, "✅ NotificationManager créé")
+            // Listener pour les changements d'état du player
+            exoPlayer.addListener(object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    val stateName = when (playbackState) {
+                        Player.STATE_IDLE -> "IDLE"
+                        Player.STATE_BUFFERING -> "BUFFERING"
+                        Player.STATE_READY -> "READY"
+                        Player.STATE_ENDED -> "ENDED"
+                        else -> "UNKNOWN"
+                    }
+                    Log.d(TAG, "🔄 État de lecture changé: $stateName")
 
-        // Listener pour les changements d'état du player
-        exoPlayer.addListener(object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                val stateName = when (playbackState) {
-                    Player.STATE_IDLE -> "IDLE"
-                    Player.STATE_BUFFERING -> "BUFFERING"
-                    Player.STATE_READY -> "READY"
-                    Player.STATE_ENDED -> "ENDED"
-                    else -> "UNKNOWN"
-                }
-                Log.d(TAG, "🔄 État de lecture changé: $stateName")
-
-                when (playbackState) {
-                    Player.STATE_READY -> {
-                        if (exoPlayer.playWhenReady) {
-                            Log.d(TAG, "▶️ Lecture prête, démarrage du foreground service")
-                            startForegroundService()
+                    when (playbackState) {
+                        Player.STATE_READY -> {
+                            if (exoPlayer.playWhenReady) {
+                                Log.d(TAG, "▶️ Lecture prête, démarrage du foreground service")
+                                startForegroundService()
+                            }
+                        }
+                        Player.STATE_ENDED -> {
+                            Log.d(TAG, "⏭️ Piste terminée, passage à la suivante")
+                            skipToNext()
                         }
                     }
-                    Player.STATE_ENDED -> {
-                        Log.d(TAG, "⏭️ Piste terminée, passage à la suivante")
-                        skipToNext()
+                }
+
+                override fun onIsPlayingChanged(isPlaying: Boolean) {
+                    Log.d(TAG, "🎵 isPlaying changé: $isPlaying")
+                    _isPlaying.value = isPlaying
+                    updateNotification()
+
+                    if (isPlaying) {
+                        startPositionUpdate()
+                    } else {
+                        stopPositionUpdate()
                     }
                 }
-            }
 
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                Log.d(TAG, "🎵 isPlaying changé: $isPlaying")
-                _isPlaying.value = isPlaying
-                updateNotification()
-
-                if (isPlaying) {
-                    startPositionUpdate()
-                } else {
-                    stopPositionUpdate()
+                override fun onPlayerError(error: PlaybackException) {
+                    Log.e(TAG, "❌ Erreur de lecture: ${error.message}", error)
+                    Log.e(TAG, "❌ Type d'erreur: ${error.errorCode}")
+                    Log.e(TAG, "❌ Cause: ${error.cause}")
+                    stopForegroundService()
                 }
-            }
 
-            override fun onPlayerError(error: PlaybackException) {
-                Log.e(TAG, "❌ Erreur de lecture: ${error.message}", error)
-                Log.e(TAG, "❌ Type d'erreur: ${error.errorCode}")
-                Log.e(TAG, "❌ Cause: ${error.cause}")
-                stopForegroundService()
-            }
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    Log.d(TAG, "🎵 Transition vers: ${mediaItem?.mediaMetadata?.title}")
+                }
+            })
 
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                Log.d(TAG, "🎵 Transition vers: ${mediaItem?.mediaMetadata?.title}")
-            }
-        })
+            // Callback pour les actions de la MediaSession
+            mediaSession.setCallback(object : MediaSessionCompat.Callback() {
+                override fun onPlay() {
+                    Log.d(TAG, "▶️ MediaSession onPlay appelé")
+                    exoPlayer.playWhenReady = true
+                    updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
+                }
 
-        // Callback pour les actions de la MediaSession
-        mediaSession.setCallback(object : MediaSessionCompat.Callback() {
-            override fun onPlay() {
-                Log.d(TAG, "▶️ onPlay appelé")
-                exoPlayer.playWhenReady = true
-                updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
-            }
+                override fun onPause() {
+                    Log.d(TAG, "⏸️ MediaSession onPause appelé")
+                    exoPlayer.playWhenReady = false
+                    updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
+                }
 
-            override fun onPause() {
-                Log.d(TAG, "⏸️ onPause appelé")
-                exoPlayer.playWhenReady = false
-                updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
-            }
+                override fun onStop() {
+                    Log.d(TAG, "⏹️ MediaSession onStop appelé")
+                    stopSelf()
+                }
 
-            override fun onStop() {
-                Log.d(TAG, "⏹️ onStop appelé")
-                stopSelf()
-            }
+                override fun onSkipToNext() {
+                    Log.d(TAG, "⏭️ MediaSession onSkipToNext appelé")
+                    skipToNext()
+                }
 
-            override fun onSkipToNext() {
-                Log.d(TAG, "⏭️ onSkipToNext appelé")
-                skipToNext()
-            }
+                override fun onSkipToPrevious() {
+                    Log.d(TAG, "⏮️ MediaSession onSkipToPrevious appelé")
+                    skipToPrevious()
+                }
 
-            override fun onSkipToPrevious() {
-                Log.d(TAG, "⏮️ onSkipToPrevious appelé")
-                skipToPrevious()
-            }
+                override fun onSeekTo(pos: Long) {
+                    Log.d(TAG, "⏩ MediaSession onSeekTo: $pos ms")
+                    exoPlayer.seekTo(pos)
+                    _currentPosition.value = pos
+                }
+            })
 
-            override fun onSeekTo(pos: Long) {
-                Log.d(TAG, "⏩ onSeekTo: $pos ms")
-                exoPlayer.seekTo(pos)
-                _currentPosition.value = pos
-            }
-        })
+            Log.d(TAG, "✅ Service complètement initialisé")
 
-        Log.d(TAG, "✅ Service complètement initialisé")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Erreur lors de l'initialisation du service: ${e.message}", e)
+        }
     }
 
     /**
      * ✅ Joue une piste avec vérification du fichier
      */
     fun playTrack(track: Track) {
+        Log.d(TAG, "🎵 playTrack() appelé depuis l'extérieur")
+        Log.d(TAG, "🎵 Track: ${track.title}")
+        Log.d(TAG, "🎵 Thread: ${Thread.currentThread().name}")
+
         serviceScope.launch {
             try {
-                Log.d(TAG, "🎵 Tentative de lecture: ${track.title}")
+                Log.d(TAG, "🎵 Début de la coroutine playTrack")
                 Log.d(TAG, "📂 Chemin: ${track.path}")
 
                 _currentTrack.value = track
@@ -247,17 +274,21 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
 
                 // Préparer et jouer
                 exoPlayer.setMediaItem(mediaItem)
-                exoPlayer.prepare()
-                exoPlayer.playWhenReady = true
+                Log.d(TAG, "📦 setMediaItem() appelé")
 
-                Log.d(TAG, "✅ ExoPlayer préparé et playWhenReady = true")
+                exoPlayer.prepare()
+                Log.d(TAG, "📦 prepare() appelé")
+
+                exoPlayer.playWhenReady = true
+                Log.d(TAG, "▶️ playWhenReady = true")
 
                 updateMediaSessionMetadata(track)
                 updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
 
-                Log.d(TAG, "✅ Métadonnées et état mis à jour")
+                Log.d(TAG, "✅ playTrack terminé avec succès")
             } catch (e: Exception) {
                 Log.e(TAG, "❌ Exception lors de playTrack: ${e.message}", e)
+                e.printStackTrace()
             }
         }
     }
@@ -266,7 +297,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      * ✅ Pause la lecture
      */
     fun pause() {
-        Log.d(TAG, "⏸️ Pause demandée")
+        Log.d(TAG, "⏸️ pause() appelé")
         exoPlayer.playWhenReady = false
         updatePlaybackState(PlaybackStateCompat.STATE_PAUSED)
     }
@@ -275,7 +306,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      * ✅ Reprend la lecture
      */
     fun play() {
-        Log.d(TAG, "▶️ Play demandée")
+        Log.d(TAG, "▶️ play() appelé")
         exoPlayer.playWhenReady = true
         updatePlaybackState(PlaybackStateCompat.STATE_PLAYING)
     }
@@ -284,7 +315,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      * Met à jour la queue de lecture
      */
     fun setQueue(tracks: List<Track>, startIndex: Int = 0) {
-        Log.d(TAG, "📋 Mise à jour de la queue: ${tracks.size} pistes, index: $startIndex")
+        Log.d(TAG, "📋 setQueue: ${tracks.size} pistes, index: $startIndex")
 
         val mediaItems = tracks.map { track ->
             MediaItem.Builder()
@@ -347,12 +378,21 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
             .build()
 
         mediaSession.setMetadata(metadata)
+        Log.d(TAG, "✅ Métadonnées MediaSession mises à jour")
     }
 
     /**
      * Met à jour l'état de lecture
      */
     private fun updatePlaybackState(state: Int) {
+        val stateName = when (state) {
+            PlaybackStateCompat.STATE_PLAYING -> "PLAYING"
+            PlaybackStateCompat.STATE_PAUSED -> "PAUSED"
+            PlaybackStateCompat.STATE_STOPPED -> "STOPPED"
+            else -> "OTHER"
+        }
+        Log.d(TAG, "🔄 updatePlaybackState: $stateName")
+
         val playbackState = PlaybackStateCompat.Builder()
             .setState(state, exoPlayer.currentPosition, 1f)
             .setActions(
@@ -411,7 +451,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         serviceScope.launch {
             while (isActive && _isPlaying.value) {
                 _currentPosition.value = exoPlayer.currentPosition
-                delay(1000) // Mettre à jour chaque seconde
+                delay(1000)
             }
         }
     }
@@ -420,7 +460,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
      * Arrête la mise à jour de la position
      */
     private fun stopPositionUpdate() {
-        // La coroutine s'arrêtera automatiquement car _isPlaying est false
+        // La coroutine s'arrêtera automatiquement
     }
 
     /**
@@ -455,7 +495,7 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d(TAG, "🧹 Service détruit")
+        Log.d(TAG, "🧹 Service onDestroy")
 
         serviceScope.cancel()
         exoPlayer.release()
@@ -470,7 +510,6 @@ class AudioPlaybackService : MediaBrowserServiceCompat() {
         super.onTaskRemoved(rootIntent)
         Log.d(TAG, "📱 Tâche supprimée du récent")
 
-        // Arrêter le service quand l'app est supprimée du récent
         if (!_isPlaying.value) {
             stopSelf()
         }

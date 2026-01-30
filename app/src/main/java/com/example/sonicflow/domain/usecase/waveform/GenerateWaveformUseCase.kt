@@ -1,5 +1,6 @@
 package com.example.sonicflow.domain.usecase.waveform
 
+import android.util.Log
 import com.example.sonicflow.domain.repository.MediaRepository
 import com.example.sonicflow.domain.repository.TrackRepository
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,11 @@ class GenerateWaveformUseCase @Inject constructor(
     private val mediaRepository: MediaRepository,
     private val trackRepository: TrackRepository
 ) {
+
+    companion object {
+        private const val TAG = "GenerateWaveformUseCase"
+    }
+
     /**
      * Génère les données de waveform pour une piste audio
      * Version simplifiée qui retourne directement le String (pour PlayerViewModel)
@@ -24,9 +30,22 @@ class GenerateWaveformUseCase @Inject constructor(
         samplesCount: Int = 100
     ): String = withContext(Dispatchers.IO) {
         try {
-            val waveformData = mediaRepository.generateWaveformData(audioPath, samplesCount)
-            waveformData ?: "[]"
+            Log.d(TAG, "🎵 Génération waveform pour: $audioPath")
+
+            // ✅ Appel à extractWaveform au lieu de generateWaveformData
+            val waveformList = mediaRepository.extractWaveform(audioPath, samplesCount)
+
+            // Convertir List<Float> en JSON String
+            val jsonString = waveformList.joinToString(
+                separator = ",",
+                prefix = "[",
+                postfix = "]"
+            )
+
+            Log.d(TAG, "✅ Waveform JSON généré: ${waveformList.size} samples")
+            jsonString
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Erreur génération waveform: ${e.message}", e)
             "[]" // Retourne un tableau vide en cas d'erreur
         }
     }
@@ -46,24 +65,30 @@ class GenerateWaveformUseCase @Inject constructor(
         samplesCount: Int = 100
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            Log.d(TAG, "💾 Génération et sauvegarde waveform pour trackId: $trackId")
+
             // Vérifier si la waveform existe déjà
             val track = trackRepository.getTrackById(trackId)
             if (track?.hasWaveform() == true) {
+                Log.d(TAG, "✅ Waveform déjà existante")
                 return@withContext Result.success(track.waveformData!!)
             }
 
             // Générer la waveform
-            val waveformData = mediaRepository.generateWaveformData(audioPath, samplesCount)
+            val waveformList = mediaRepository.extractWaveform(audioPath, samplesCount)
+            val waveformData = waveformList.joinToString(
+                separator = ",",
+                prefix = "[",
+                postfix = "]"
+            )
 
-            if (waveformData != null) {
-                // Sauvegarder dans la base de données
-                trackRepository.updateWaveformData(trackId, waveformData)
-                Result.success(waveformData)
-            } else {
-                Result.failure(Exception("Failed to generate waveform data"))
-            }
+            // Sauvegarder dans la base de données
+            trackRepository.updateWaveformData(trackId, waveformData)
+            Log.d(TAG, "✅ Waveform sauvegardée en base de données")
 
+            Result.success(waveformData)
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Erreur generateAndSave: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -77,14 +102,19 @@ class GenerateWaveformUseCase @Inject constructor(
         samplesCount: Int = 100
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
-            val waveformData = mediaRepository.generateWaveformData(audioPath, samplesCount)
+            Log.d(TAG, "🎵 Génération waveform sans sauvegarde")
 
-            if (waveformData != null) {
-                Result.success(waveformData)
-            } else {
-                Result.failure(Exception("Failed to generate waveform data"))
-            }
+            val waveformList = mediaRepository.extractWaveform(audioPath, samplesCount)
+            val waveformData = waveformList.joinToString(
+                separator = ",",
+                prefix = "[",
+                postfix = "]"
+            )
+
+            Log.d(TAG, "✅ Waveform générée: ${waveformList.size} samples")
+            Result.success(waveformData)
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Erreur generateWithoutSaving: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -101,6 +131,7 @@ class GenerateWaveformUseCase @Inject constructor(
                 jsonArray.getDouble(index).toFloat()
             }
         } catch (e: Exception) {
+            Log.e(TAG, "❌ Erreur parsing waveform: ${e.message}")
             emptyList()
         }
     }

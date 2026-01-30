@@ -39,7 +39,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 fun LibraryScreen(
     onNavigateToPlayer: () -> Unit,
     libraryViewModel: LibraryViewModel = hiltViewModel(),
-    playerViewModel: PlayerViewModel = hiltViewModel() // ✅ Ajouter PlayerViewModel
+    playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
     val state by libraryViewModel.state.collectAsState()
     val context = LocalContext.current
@@ -71,9 +71,11 @@ fun LibraryScreen(
         }
     }
 
-    // ✅ Scanner automatiquement quand la permission est accordée
+// ✅ Scanner automatiquement quand la permission est accordée
     LaunchedEffect(permissionsState.allPermissionsGranted) {
-        if (permissionsState.allPermissionsGranted && state.tracks.isEmpty()) {
+        Log.d("LibraryScreen", "⚡ Permission state changed: ${permissionsState.allPermissionsGranted}")
+
+        if (permissionsState.allPermissionsGranted) {
             Log.d("LibraryScreen", "🔄 Lancement du scan automatique...")
             libraryViewModel.syncTracks()
         }

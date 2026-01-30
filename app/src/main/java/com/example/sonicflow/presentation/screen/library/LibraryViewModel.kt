@@ -15,7 +15,6 @@ import javax.inject.Inject
 
 /**
  * ViewModel pour l'écran Library
- * Semaine 1, Jours 6-7
  * Avec scan automatique au démarrage
  */
 @HiltViewModel
